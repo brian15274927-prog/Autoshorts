@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+
+{% block title %}User: {{ user.user_id }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <a href="/admin-ui/users" style="color: var(--text-secondary);">&larr; Back to Users</a>
+</div>
+
+{% if message %}
+<div class="alert alert-success">{{ message }}</div>
+{% endif %}
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<div class="user-header">
+    <div class="user-info">
+        <h1 class="mono">{{ user.user_id }}</h1>
+        <div class="user-meta">
+            <span class="user-meta-item">
+                Plan:
+                {% if user.plan.value == 'pro' %}
+                <span class="badge badge-info">PRO</span>
+                {% elif user.plan.value == 'enterprise' %}
+                <span class="badge badge-success">ENTERPRISE</span>
+                {% else %}
+                <span class="badge badge-secondary">FREE</span>
+                {% endif %}
+            </span>
+            <span class="user-meta-item">
+                Credits:
+                {% if user.plan.value == 'enterprise' %}
+                <strong style="color: var(--success);">Unlimited</strong>
+                {% else %}
+                <strong>{{ user.credits }}</strong>
+                {% endif %}
+            </span>
+            <span class="user-meta-item">Email: {{ user.email or 'N/A' }}</span>
+        </div>
+    </div>
+</div>
+
+<div class="grid-2">
+    <!-- Change Plan Form -->
+    <div class="card">
+        <div class="card-header">Change Plan</div>
+        <form method="POST" action="/admin-ui/users/{{ user.user_id }}/plan">
+            <div class="form-group">
+                <label class="form-label">Select Plan</label>
+                <select name="plan" class="form-control">
+                    <option value="free" {% if user.plan.value == 'free' %}selected{% endif %}>Free (3 credits)</option>
+                    <option value="pro" {% if user.plan.value == 'pro' %}selected{% endif %}>Pro (30 credits)</option>
+                    <option value="enterprise" {% if user.plan.value == 'enterprise' %}selected{% endif %}>Enterprise (unlimited)</option>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary">Update Plan</button>
+        </form>
+    </div>
+
+    <!-- Adjust Credits Form -->
+    <div class="card">
+        <div class="card-header">Adjust Credits</div>
+        <form method="POST" action="/admin-ui/users/{{ user.user_id }}/credits">
+            <div class="form-group">
+                <label class="form-label">Credit Delta (+ or -)</label>
+                <input
+                    type="number"
+                    name="delta"
+                    class="form-control"
+                    placeholder="e.g., 10 or -5"
+                    required
+                >
+            </div>
+            <div class="form-group">
+                <label class="form-label">Reason</label>
+                <input
+                    type="text"
+                    name="reason"
+                    class="form-control"
+                    placeholder="e.g., Bonus, Refund, Correction"
+                    value="admin"
+                >
+            </div>
+            <button type="submit" class="btn btn-success">Apply</button>
+        </form>
+    </div>
+</div>
+
+<!-- Credit Ledger -->
+<div class="card">
+    <div class="card-header">Credit Ledger (Last 50)</div>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Delta</th>
+                    <th>Reason</th>
+                    <th>Job ID</th>
+                    <th>Created At</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in ledger %}
+                <tr>
+                    <td>{{ entry.id }}</td>
+                    <td>
+                        {% if entry.delta > 0 %}
+                        <span class="badge badge-success">+{{ entry.delta }}</span>
+                        {% else %}
+                        <span class="badge badge-danger">{{ entry.delta }}</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ entry.reason }}</td>
+                    <td class="mono truncate">{{ entry.related_job_id or '-' }}</td>
+                    <td>{{ entry.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5" class="empty-state">No ledger entries</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Jobs -->
+<div class="card">
+    <div class="card-header">Jobs (Last 50)</div>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Task ID</th>
+                    <th>Job ID</th>
+                    <th>Created At</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for job in jobs %}
+                <tr>
+                    <td class="mono truncate">{{ job.task_id }}</td>
+                    <td class="mono truncate">{{ job.job_id }}</td>
+                    <td>{{ job.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="3" class="empty-state">No jobs</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Idempotency Keys -->
+<div class="card">
+    <div class="card-header">Idempotency Keys</div>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Key</th>
+                    <th>Status</th>
+                    <th>Task ID</th>
+                    <th>Request Hash</th>
+                    <th>Created At</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for key in idempotency_keys %}
+                <tr>
+                    <td class="mono truncate">{{ key.key }}</td>
+                    <td>
+                        {% if key.status.value == 'completed' %}
+                        <span class="badge badge-success">COMPLETED</span>
+                        {% elif key.status.value == 'pending' %}
+                        <span class="badge badge-warning">PENDING</span>
+                        {% else %}
+                        <span class="badge badge-danger">FAILED</span>
+                        {% endif %}
+                    </td>
+                    <td class="mono truncate">{{ key.task_id or '-' }}</td>
+                    <td class="mono truncate">{{ key.request_hash[:12] }}...</td>
+                    <td>{{ key.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5" class="empty-state">No idempotency keys</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

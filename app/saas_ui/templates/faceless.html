@@ -1,0 +1,569 @@
+{% extends "base.html" %}
+
+{% block title %}Faceless AI Studio{% endblock %}
+
+{% block head %}
+<style>
+    /* Progress ring */
+    .progress-ring {
+        transform: rotate(-90deg);
+    }
+    .progress-ring circle {
+        stroke-dasharray: 314;
+        stroke-dashoffset: 314;
+        stroke-linecap: round;
+        transition: stroke-dashoffset 0.5s ease;
+    }
+
+    /* Step indicators */
+    .step-dot {
+        transition: all 0.3s ease;
+    }
+    .step-dot.active { background: #a855f7; transform: scale(1.2); }
+    .step-dot.completed { background: #22c55e; }
+
+    /* Job card */
+    .job-card {
+        transition: all 0.2s;
+    }
+    .job-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    }
+
+    /* Script segment */
+    .segment-card {
+        background: linear-gradient(135deg, rgba(168, 85, 247, 0.05), rgba(99, 102, 241, 0.05));
+        border: 1px solid rgba(168, 85, 247, 0.1);
+    }
+
+    /* Subtitle preview */
+    .subtitle-demo {
+        font-family: 'Montserrat', sans-serif;
+        font-weight: 900;
+        text-shadow: -3px -3px 0 #000, 3px -3px 0 #000, -3px 3px 0 #000, 3px 3px 0 #000;
+    }
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@900&display=swap" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="h-full flex flex-col" id="faceless-app">
+    <!-- Header -->
+    <header class="h-14 glass border-b border-white/5 flex items-center justify-between px-6 flex-shrink-0">
+        <div class="flex items-center gap-4">
+            <a href="/app" class="flex items-center gap-2 text-dark-400 hover:text-white transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+                </svg>
+            </a>
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-gradient-to-br from-brand-500 to-indigo-600 rounded-xl flex items-center justify-center">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold text-white">Faceless AI Studio</h1>
+                    <p class="text-xs text-dark-400">Auto-Pilot Video Generation</p>
+                </div>
+            </div>
+        </div>
+        <div class="flex items-center gap-4">
+            <span class="text-sm text-dark-400">{{ credits }} credits</span>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="flex-1 flex overflow-hidden">
+        <!-- Left: Generator Form -->
+        <div class="w-1/2 p-8 overflow-y-auto scrollbar-thin border-r border-white/5">
+            <div class="max-w-lg mx-auto">
+                <!-- Step 1: Topic -->
+                <div id="step-topic" class="space-y-6">
+                    <div class="flex items-center gap-3 mb-6">
+                        <div class="step-dot w-8 h-8 bg-brand-500 rounded-full flex items-center justify-center text-white font-bold">1</div>
+                        <h2 class="text-xl font-bold text-white">Topic & Style</h2>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-dark-300 mb-2">Video Topic</label>
+                        <input type="text" id="topic" placeholder="5 Life Hacks That Will Change Your Morning Routine"
+                               class="w-full px-4 py-4 bg-dark-800/50 border border-white/10 rounded-xl text-white placeholder-dark-500 focus:outline-none focus:border-brand-500 text-lg">
+                        <p class="text-xs text-dark-500 mt-2">Be specific - the AI will create a viral script from this</p>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-dark-300 mb-2">Script Style</label>
+                            <select id="style" class="w-full px-4 py-3 bg-dark-800/50 border border-white/10 rounded-xl text-white focus:outline-none focus:border-brand-500">
+                                <option value="viral">Viral / Hook-driven</option>
+                                <option value="educational">Educational</option>
+                                <option value="storytelling">Storytelling</option>
+                                <option value="motivational">Motivational</option>
+                                <option value="documentary">Documentary</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-dark-300 mb-2">Language</label>
+                            <select id="language" class="w-full px-4 py-3 bg-dark-800/50 border border-white/10 rounded-xl text-white focus:outline-none focus:border-brand-500">
+                                <option value="ru">Russian</option>
+                                <option value="en">English</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-dark-300 mb-2">Voice</label>
+                            <select id="voice" class="w-full px-4 py-3 bg-dark-800/50 border border-white/10 rounded-xl text-white focus:outline-none focus:border-brand-500">
+                                <option value="ru-RU-DmitryNeural">Dmitry (Male, RU)</option>
+                                <option value="ru-RU-SvetlanaNeural">Svetlana (Female, RU)</option>
+                                <option value="en-US-GuyNeural">Guy (Male, EN)</option>
+                                <option value="en-US-JennyNeural">Jenny (Female, EN)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-dark-300 mb-2">Duration (seconds)</label>
+                            <input type="number" id="duration" value="60" min="15" max="180"
+                                   class="w-full px-4 py-3 bg-dark-800/50 border border-white/10 rounded-xl text-white focus:outline-none focus:border-brand-500">
+                        </div>
+                    </div>
+
+                    <div class="h-px bg-white/5 my-6"></div>
+
+                    <!-- Video Format -->
+                    <div>
+                        <label class="block text-sm font-medium text-dark-300 mb-3">Video Format</label>
+                        <div class="grid grid-cols-3 gap-3">
+                            <button class="format-btn px-4 py-6 bg-dark-800/50 rounded-xl border-2 border-brand-500 bg-brand-500/10 flex flex-col items-center gap-2" data-format="9:16">
+                                <div class="w-6 h-10 border-2 border-brand-400 rounded"></div>
+                                <span class="text-sm text-white font-medium">9:16</span>
+                                <span class="text-[10px] text-dark-500">TikTok / Reels</span>
+                            </button>
+                            <button class="format-btn px-4 py-6 bg-dark-800/50 rounded-xl border-2 border-white/10 flex flex-col items-center gap-2" data-format="1:1">
+                                <div class="w-8 h-8 border-2 border-dark-400 rounded"></div>
+                                <span class="text-sm text-dark-300 font-medium">1:1</span>
+                                <span class="text-[10px] text-dark-500">Instagram</span>
+                            </button>
+                            <button class="format-btn px-4 py-6 bg-dark-800/50 rounded-xl border-2 border-white/10 flex flex-col items-center gap-2" data-format="16:9">
+                                <div class="w-10 h-6 border-2 border-dark-400 rounded"></div>
+                                <span class="text-sm text-dark-300 font-medium">16:9</span>
+                                <span class="text-[10px] text-dark-500">YouTube</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Subtitle Style -->
+                    <div>
+                        <label class="block text-sm font-medium text-dark-300 mb-3">Subtitle Style</label>
+                        <div class="space-y-2">
+                            <button class="subtitle-btn w-full p-4 bg-dark-800/50 rounded-xl border-2 border-brand-500 bg-brand-500/10 text-left flex items-center justify-between" data-style="hormozi">
+                                <div>
+                                    <span class="text-sm text-white font-bold">Hormozi Style</span>
+                                    <p class="text-xs text-dark-500">Yellow text, black outline, pop animation</p>
+                                </div>
+                                <span class="subtitle-demo text-yellow-400 text-lg">EXAMPLE</span>
+                            </button>
+                            <button class="subtitle-btn w-full p-4 bg-dark-800/50 rounded-xl border-2 border-white/10 text-left flex items-center justify-between" data-style="clean">
+                                <div>
+                                    <span class="text-sm text-white font-medium">Clean</span>
+                                    <p class="text-xs text-dark-500">White text with shadow</p>
+                                </div>
+                                <span class="text-white text-lg shadow-lg">Example</span>
+                            </button>
+                            <button class="subtitle-btn w-full p-4 bg-dark-800/50 rounded-xl border-2 border-white/10 text-left flex items-center justify-between" data-style="neon">
+                                <div>
+                                    <span class="text-sm text-white font-medium">Neon</span>
+                                    <p class="text-xs text-dark-500">Glowing cyan effect</p>
+                                </div>
+                                <span class="text-cyan-400 text-lg" style="text-shadow: 0 0 10px cyan">Example</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Background Music -->
+                    <div class="flex items-center justify-between p-4 bg-dark-800/30 rounded-xl">
+                        <div>
+                            <span class="text-sm text-white font-medium">Background Music</span>
+                            <p class="text-xs text-dark-500">Add royalty-free background music</p>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="bg-music" checked class="sr-only peer">
+                            <div class="w-11 h-6 bg-dark-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-600"></div>
+                        </label>
+                    </div>
+
+                    <!-- Generate Button -->
+                    <button onclick="Faceless.generate()" id="btn-generate"
+                            class="w-full px-6 py-4 bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white font-bold text-lg rounded-xl transition-all flex items-center justify-center gap-3 mt-8">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"></path>
+                        </svg>
+                        Generate Faceless Video
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right: Preview & Status -->
+        <div class="w-1/2 p-8 overflow-y-auto scrollbar-thin bg-dark-950/50">
+            <!-- Current Job Progress -->
+            <div id="job-progress" class="hidden max-w-md mx-auto">
+                <div class="glass rounded-2xl p-8 text-center">
+                    <!-- Progress Ring -->
+                    <div class="relative w-32 h-32 mx-auto mb-6">
+                        <svg class="progress-ring w-32 h-32">
+                            <circle cx="64" cy="64" r="50" stroke="rgba(255,255,255,0.1)" stroke-width="8" fill="none"/>
+                            <circle id="progress-circle" cx="64" cy="64" r="50" stroke="url(#gradient)" stroke-width="8" fill="none"/>
+                            <defs>
+                                <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                                    <stop offset="0%" stop-color="#a855f7"/>
+                                    <stop offset="100%" stop-color="#6366f1"/>
+                                </linearGradient>
+                            </defs>
+                        </svg>
+                        <div class="absolute inset-0 flex items-center justify-center">
+                            <span id="progress-percent" class="text-3xl font-bold text-white">0%</span>
+                        </div>
+                    </div>
+
+                    <h3 class="text-xl font-bold text-white mb-2">Generating Video</h3>
+                    <p id="progress-message" class="text-dark-400 mb-6">Initializing...</p>
+
+                    <!-- Steps -->
+                    <div class="flex justify-center gap-2 mb-6">
+                        <div class="step-dot w-3 h-3 rounded-full bg-dark-600" data-step="script"></div>
+                        <div class="step-dot w-3 h-3 rounded-full bg-dark-600" data-step="audio"></div>
+                        <div class="step-dot w-3 h-3 rounded-full bg-dark-600" data-step="footage"></div>
+                        <div class="step-dot w-3 h-3 rounded-full bg-dark-600" data-step="render"></div>
+                    </div>
+
+                    <button onclick="Faceless.cancel()" class="text-sm text-dark-400 hover:text-white transition-colors">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+
+            <!-- Completed Video Preview -->
+            <div id="video-result" class="hidden max-w-md mx-auto">
+                <div class="glass rounded-2xl overflow-hidden">
+                    <div class="aspect-[9/16] bg-black relative">
+                        <video id="result-video" class="w-full h-full object-contain" controls></video>
+                    </div>
+                    <div class="p-4 space-y-3">
+                        <h3 id="result-title" class="text-lg font-bold text-white">Video Title</h3>
+                        <div class="flex gap-3">
+                            <button onclick="Faceless.download()" class="flex-1 px-4 py-3 bg-gradient-to-r from-brand-600 to-indigo-600 text-white font-semibold rounded-xl flex items-center justify-center gap-2">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                                </svg>
+                                Download MP4
+                            </button>
+                            <button onclick="Faceless.openEditor()" class="px-4 py-3 bg-white/5 hover:bg-white/10 text-white font-medium rounded-xl border border-white/10">
+                                Edit
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Empty State -->
+            <div id="empty-state" class="max-w-md mx-auto text-center py-16">
+                <div class="w-24 h-24 bg-dark-800/50 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                    <svg class="w-12 h-12 text-dark-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                    </svg>
+                </div>
+                <h3 class="text-xl font-bold text-white mb-2">Your Video Preview</h3>
+                <p class="text-dark-400 mb-8">Enter a topic and click Generate to create your faceless video</p>
+
+                <div class="bg-dark-800/30 rounded-xl p-4 text-left">
+                    <h4 class="text-sm font-semibold text-white mb-3">How it works:</h4>
+                    <div class="space-y-2 text-sm text-dark-400">
+                        <div class="flex items-center gap-2">
+                            <span class="w-5 h-5 bg-brand-500/20 text-brand-400 rounded-full flex items-center justify-center text-xs font-bold">1</span>
+                            <span>AI generates a viral script</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="w-5 h-5 bg-brand-500/20 text-brand-400 rounded-full flex items-center justify-center text-xs font-bold">2</span>
+                            <span>Text-to-speech creates narration</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="w-5 h-5 bg-brand-500/20 text-brand-400 rounded-full flex items-center justify-center text-xs font-bold">3</span>
+                            <span>Stock footage is matched automatically</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="w-5 h-5 bg-brand-500/20 text-brand-400 rounded-full flex items-center justify-center text-xs font-bold">4</span>
+                            <span>Final video with subtitles rendered</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Jobs -->
+            <div id="recent-jobs" class="max-w-md mx-auto mt-8">
+                <h3 class="text-sm font-semibold text-dark-400 uppercase tracking-wider mb-4">Recent Jobs</h3>
+                <div id="jobs-list" class="space-y-3">
+                    <!-- Jobs will be rendered here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const Faceless = {
+    currentJobId: null,
+    pollInterval: null,
+    settings: {
+        format: '9:16',
+        subtitleStyle: 'hormozi'
+    },
+
+    async generate() {
+        const topic = document.getElementById('topic').value.trim();
+        if (!topic) {
+            App.showToast('Please enter a topic', 'error');
+            return;
+        }
+
+        const params = {
+            topic,
+            style: document.getElementById('style').value,
+            language: document.getElementById('language').value,
+            voice: document.getElementById('voice').value,
+            duration: parseInt(document.getElementById('duration').value),
+            format: this.settings.format,
+            subtitle_style: this.settings.subtitleStyle,
+            background_music: document.getElementById('bg-music').checked,
+            music_volume: 0.2
+        };
+
+        // Show progress
+        document.getElementById('empty-state').classList.add('hidden');
+        document.getElementById('video-result').classList.add('hidden');
+        document.getElementById('job-progress').classList.remove('hidden');
+
+        try {
+            const response = await fetch('/api/faceless/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(params)
+            });
+
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.detail || 'Generation failed');
+            }
+
+            this.currentJobId = result.job_id;
+            this.startPolling();
+
+        } catch (e) {
+            App.showToast('Error: ' + e.message, 'error');
+            this.showEmptyState();
+        }
+    },
+
+    startPolling() {
+        if (this.pollInterval) clearInterval(this.pollInterval);
+
+        this.pollInterval = setInterval(async () => {
+            try {
+                const response = await fetch(`/api/faceless/status/${this.currentJobId}`);
+                const status = await response.json();
+
+                this.updateProgress(status);
+
+                if (status.status === 'completed') {
+                    clearInterval(this.pollInterval);
+                    this.showResult(status);
+                } else if (status.status === 'failed') {
+                    clearInterval(this.pollInterval);
+                    App.showToast('Error: ' + (status.error || 'Generation failed'), 'error');
+                    this.showEmptyState();
+                }
+            } catch (e) {
+                console.error('Polling error:', e);
+            }
+        }, 2000);
+    },
+
+    updateProgress(status) {
+        const percent = Math.round(status.progress);
+        document.getElementById('progress-percent').textContent = `${percent}%`;
+        document.getElementById('progress-message').textContent = status.progress_message;
+
+        // Update progress ring
+        const circle = document.getElementById('progress-circle');
+        const circumference = 314; // 2 * PI * 50
+        const offset = circumference - (percent / 100) * circumference;
+        circle.style.strokeDashoffset = offset;
+
+        // Update step dots
+        const dots = document.querySelectorAll('.step-dot');
+        if (status.status === 'generating_script' || percent >= 20) {
+            dots[0].classList.add('active');
+        }
+        if (status.status === 'generating_audio' || percent >= 40) {
+            dots[0].classList.remove('active');
+            dots[0].classList.add('completed');
+            dots[1].classList.add('active');
+        }
+        if (status.status === 'downloading_footage' || percent >= 70) {
+            dots[1].classList.remove('active');
+            dots[1].classList.add('completed');
+            dots[2].classList.add('active');
+        }
+        if (status.status === 'rendering' || percent >= 90) {
+            dots[2].classList.remove('active');
+            dots[2].classList.add('completed');
+            dots[3].classList.add('active');
+        }
+    },
+
+    showResult(status) {
+        document.getElementById('job-progress').classList.add('hidden');
+        document.getElementById('video-result').classList.remove('hidden');
+
+        const video = document.getElementById('result-video');
+        video.src = `/api/faceless/download/${this.currentJobId}`;
+
+        document.getElementById('result-title').textContent = status.script?.title || status.topic;
+
+        App.showToast('Video generated successfully!');
+        this.loadRecentJobs();
+    },
+
+    showEmptyState() {
+        document.getElementById('job-progress').classList.add('hidden');
+        document.getElementById('video-result').classList.add('hidden');
+        document.getElementById('empty-state').classList.remove('hidden');
+    },
+
+    cancel() {
+        if (this.pollInterval) clearInterval(this.pollInterval);
+        this.showEmptyState();
+    },
+
+    download() {
+        if (this.currentJobId) {
+            window.open(`/api/faceless/download/${this.currentJobId}`, '_blank');
+        }
+    },
+
+    openEditor() {
+        if (this.currentJobId) {
+            window.location.href = `/app/pro-editor?job_id=${this.currentJobId}`;
+        }
+    },
+
+    async loadRecentJobs() {
+        try {
+            const response = await fetch('/api/faceless/jobs?limit=5');
+            const jobs = await response.json();
+
+            const list = document.getElementById('jobs-list');
+            if (!jobs.length) {
+                list.innerHTML = '<p class="text-sm text-dark-500">No recent jobs</p>';
+                return;
+            }
+
+            list.innerHTML = jobs.map(job => `
+                <div class="job-card glass rounded-xl p-4 cursor-pointer" onclick="Faceless.loadJob('${job.job_id}')">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-medium text-white truncate flex-1 mr-2">${job.topic}</span>
+                        <span class="px-2 py-0.5 rounded text-xs ${this.getStatusClass(job.status)}">${job.status}</span>
+                    </div>
+                    <div class="flex items-center justify-between text-xs text-dark-500">
+                        <span>${this.formatDate(job.created_at)}</span>
+                        ${job.status === 'completed' ? '<span class="text-green-400">Ready</span>' : ''}
+                    </div>
+                </div>
+            `).join('');
+
+        } catch (e) {
+            console.error('Failed to load jobs:', e);
+        }
+    },
+
+    getStatusClass(status) {
+        switch (status) {
+            case 'completed': return 'bg-green-500/20 text-green-400';
+            case 'failed': return 'bg-red-500/20 text-red-400';
+            case 'pending': return 'bg-yellow-500/20 text-yellow-400';
+            default: return 'bg-brand-500/20 text-brand-400';
+        }
+    },
+
+    formatDate(isoString) {
+        const date = new Date(isoString);
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    },
+
+    loadJob(jobId) {
+        this.currentJobId = jobId;
+        document.getElementById('empty-state').classList.add('hidden');
+        document.getElementById('job-progress').classList.add('hidden');
+        document.getElementById('video-result').classList.remove('hidden');
+
+        const video = document.getElementById('result-video');
+        video.src = `/api/faceless/download/${jobId}`;
+    }
+};
+
+// Format buttons
+document.querySelectorAll('.format-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.format-btn').forEach(b => {
+            b.classList.remove('border-brand-500', 'bg-brand-500/10');
+            b.classList.add('border-white/10');
+            b.querySelector('div').classList.remove('border-brand-400');
+            b.querySelector('div').classList.add('border-dark-400');
+            b.querySelectorAll('span').forEach(s => {
+                if (!s.classList.contains('text-[10px]')) {
+                    s.classList.remove('text-white');
+                    s.classList.add('text-dark-300');
+                }
+            });
+        });
+
+        btn.classList.add('border-brand-500', 'bg-brand-500/10');
+        btn.classList.remove('border-white/10');
+        btn.querySelector('div').classList.add('border-brand-400');
+        btn.querySelector('div').classList.remove('border-dark-400');
+        btn.querySelectorAll('span').forEach(s => {
+            if (!s.classList.contains('text-[10px]')) {
+                s.classList.add('text-white');
+                s.classList.remove('text-dark-300');
+            }
+        });
+
+        Faceless.settings.format = btn.dataset.format;
+    });
+});
+
+// Subtitle style buttons
+document.querySelectorAll('.subtitle-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.subtitle-btn').forEach(b => {
+            b.classList.remove('border-brand-500', 'bg-brand-500/10');
+            b.classList.add('border-white/10');
+        });
+
+        btn.classList.add('border-brand-500', 'bg-brand-500/10');
+        btn.classList.remove('border-white/10');
+
+        Faceless.settings.subtitleStyle = btn.dataset.style;
+    });
+});
+
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+    Faceless.loadRecentJobs();
+});
+</script>
+{% endblock %}

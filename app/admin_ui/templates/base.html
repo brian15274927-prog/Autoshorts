@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Admin{% endblock %} - Video Rendering API</title>
+    <link rel="stylesheet" href="/admin-ui/static/style.css">
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+</head>
+<body>
+    {% if authenticated %}
+    <nav class="navbar">
+        <a href="/admin-ui" class="navbar-brand">Video Rendering Admin</a>
+        <ul class="navbar-nav">
+            <li><a href="/admin-ui" {% if active_page == 'dashboard' %}class="active"{% endif %}>Dashboard</a></li>
+            <li><a href="/admin-ui/users" {% if active_page == 'users' %}class="active"{% endif %}>Users</a></li>
+            <li><a href="/admin-ui/idempotency" {% if active_page == 'idempotency' %}class="active"{% endif %}>Idempotency</a></li>
+        </ul>
+        <div class="navbar-user">
+            <span>Admin</span>
+            <a href="/admin-ui/logout" class="btn btn-sm btn-secondary">Logout</a>
+        </div>
+    </nav>
+    {% endif %}
+
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

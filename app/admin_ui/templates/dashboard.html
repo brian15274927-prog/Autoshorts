@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Dashboard</h1>
+    <p>System overview and recent activity</p>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.total_users }}</div>
+        <div class="stat-label">Total Users</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.total_jobs }}</div>
+        <div class="stat-label">Total Jobs</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.total_ledger_entries }}</div>
+        <div class="stat-label">Ledger Entries</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.total_idempotency_keys }}</div>
+        <div class="stat-label">Idempotency Keys</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">Recent Credit Activity</div>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>User ID</th>
+                    <th>Delta</th>
+                    <th>Reason</th>
+                    <th>Job ID</th>
+                    <th>Created At</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in recent_ledger %}
+                <tr>
+                    <td>
+                        <a href="/admin-ui/users/{{ entry.user_id }}" class="mono">{{ entry.user_id }}</a>
+                    </td>
+                    <td>
+                        {% if entry.delta > 0 %}
+                        <span class="badge badge-success">+{{ entry.delta }}</span>
+                        {% else %}
+                        <span class="badge badge-danger">{{ entry.delta }}</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ entry.reason }}</td>
+                    <td class="mono truncate">{{ entry.related_job_id or '-' }}</td>
+                    <td>{{ entry.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5" class="empty-state">No ledger entries yet</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,933 @@
+{% extends "base.html" %}
+
+{% block title %}Редактор клипа - ИИ Студия{% endblock %}
+
+{% block head %}
+<style>
+    /* Word-based timeline */
+    .word-item {
+        display: inline-block;
+        padding: 2px 6px;
+        margin: 2px;
+        border-radius: 4px;
+        font-size: 13px;
+        cursor: pointer;
+        transition: all 0.15s;
+        border: 1px solid transparent;
+    }
+    .word-item:hover {
+        background: rgba(168, 85, 247, 0.2);
+        border-color: rgba(168, 85, 247, 0.3);
+    }
+    .word-item.active {
+        background: rgba(168, 85, 247, 0.3);
+        border-color: #a855f7;
+        color: white;
+    }
+    .word-item.playing {
+        background: rgba(34, 197, 94, 0.2);
+        border-color: rgba(34, 197, 94, 0.5);
+    }
+
+    /* Timeline scrubber */
+    .timeline-track {
+        position: relative;
+        height: 48px;
+        background: rgba(0,0,0,0.3);
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    .timeline-fill {
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 100%;
+        background: linear-gradient(90deg, rgba(168, 85, 247, 0.3), rgba(99, 102, 241, 0.3));
+        transition: width 0.1s linear;
+    }
+    .timeline-waveform {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-around;
+        padding: 8px;
+    }
+    .waveform-bar {
+        width: 2px;
+        background: rgba(168, 85, 247, 0.5);
+        border-radius: 1px;
+    }
+    .timeline-playhead {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background: #a855f7;
+        box-shadow: 0 0 8px rgba(168, 85, 247, 0.8);
+        z-index: 10;
+    }
+    .timeline-playhead::after {
+        content: '';
+        position: absolute;
+        top: -4px;
+        left: -4px;
+        width: 10px;
+        height: 10px;
+        background: #a855f7;
+        border-radius: 50%;
+    }
+
+    /* Subtitle editing */
+    .subtitle-block {
+        transition: all 0.2s;
+        border-left: 3px solid transparent;
+    }
+    .subtitle-block:hover {
+        background: rgba(168, 85, 247, 0.1);
+    }
+    .subtitle-block.active {
+        background: rgba(168, 85, 247, 0.15);
+        border-left-color: #a855f7;
+    }
+    .subtitle-input {
+        background: transparent;
+        border: none;
+        outline: none;
+        width: 100%;
+        color: white;
+        font-size: 14px;
+        padding: 4px 0;
+    }
+    .subtitle-input:focus {
+        background: rgba(0,0,0,0.2);
+        border-radius: 4px;
+        padding: 4px 8px;
+        margin: -4px -8px;
+        width: calc(100% + 16px);
+    }
+
+    /* Video container */
+    .video-frame {
+        position: relative;
+        background: #000;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    }
+    .video-frame::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 12px;
+        pointer-events: none;
+        z-index: 10;
+    }
+
+    /* Render progress */
+    .render-progress {
+        background: linear-gradient(90deg, #a855f7, #6366f1, #a855f7);
+        background-size: 200% 100%;
+        animation: shimmer 1.5s infinite;
+    }
+    @keyframes shimmer {
+        0% { background-position: -200% 0; }
+        100% { background-position: 200% 0; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="h-full flex flex-col">
+    <!-- Top Bar -->
+    <header class="h-14 glass border-b border-white/5 flex items-center justify-between px-4 flex-shrink-0">
+        <div class="flex items-center gap-4">
+            <a href="/app" class="flex items-center gap-2 text-dark-400 hover:text-white transition-colors group">
+                <svg class="w-5 h-5 group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+                </svg>
+                <span class="text-sm font-medium">Назад в Студию</span>
+            </a>
+            <div class="h-6 w-px bg-white/10"></div>
+            <div class="flex items-center gap-2">
+                <div class="w-8 h-8 bg-gradient-to-br from-brand-500 to-indigo-600 rounded-lg flex items-center justify-center">
+                    <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-sm font-semibold text-white">Редактор клипа</h1>
+                    <p class="text-xs text-dark-500" id="clip-title">Загрузка...</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <!-- Render Status -->
+            <div id="render-status" class="hidden flex items-center gap-2 px-3 py-1.5 bg-brand-500/20 rounded-lg">
+                <svg class="w-4 h-4 text-brand-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                </svg>
+                <span class="text-sm text-brand-400">Рендеринг...</span>
+            </div>
+
+            <!-- Actions -->
+            <button onclick="Editor.render()" id="btn-render"
+                    class="px-4 py-2 bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white text-sm font-semibold rounded-lg transition-all flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+                Пересоздать
+            </button>
+            <button onclick="Editor.download()" id="btn-download"
+                    class="px-4 py-2 bg-white/5 hover:bg-white/10 text-white text-sm font-medium rounded-lg border border-white/10 flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                </svg>
+                Скачать
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="flex-1 flex overflow-hidden">
+        <!-- Left: Video Preview -->
+        <div class="flex-1 flex flex-col p-6">
+            <!-- Video Container -->
+            <div class="flex-1 flex items-center justify-center">
+                <div class="video-frame" id="video-container" style="aspect-ratio: 9/16; height: 65vh;">
+                    <video id="video-player" class="w-full h-full object-contain"></video>
+
+                    <!-- Subtitle Overlay -->
+                    <div id="subtitle-overlay" class="absolute bottom-16 left-0 right-0 text-center px-6 hidden">
+                        <div class="inline-block">
+                            <span id="subtitle-text" class="px-6 py-3 bg-black/80 text-white text-xl font-bold rounded-xl backdrop-blur-sm"></span>
+                        </div>
+                    </div>
+
+                    <!-- Placeholder -->
+                    <div id="video-placeholder" class="absolute inset-0 flex flex-col items-center justify-center bg-dark-900">
+                        <svg class="w-16 h-16 text-dark-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                        </svg>
+                        <p class="text-dark-500">Загрузка видео...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Playback Controls -->
+            <div class="mt-6 space-y-4">
+                <!-- Controls Bar -->
+                <div class="flex items-center gap-4">
+                    <button id="btn-play" onclick="Editor.togglePlay()"
+                            class="w-12 h-12 flex items-center justify-center bg-gradient-to-br from-brand-500 to-indigo-600 rounded-full shadow-lg shadow-brand-500/30 hover:shadow-brand-500/50 transition-all">
+                        <svg id="icon-play" class="w-5 h-5 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M8 5v14l11-7z"/>
+                        </svg>
+                        <svg id="icon-pause" class="w-5 h-5 text-white hidden" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
+                        </svg>
+                    </button>
+
+                    <div class="flex-1">
+                        <div class="timeline-track cursor-pointer" onclick="Editor.seek(event)">
+                            <div class="timeline-fill" id="timeline-fill"></div>
+                            <div class="timeline-waveform" id="waveform">
+                                <!-- Waveform bars will be generated -->
+                            </div>
+                            <div class="timeline-playhead" id="playhead" style="left: 0%"></div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-2 text-sm font-mono">
+                        <span id="time-current" class="text-white">0:00</span>
+                        <span class="text-dark-600">/</span>
+                        <span id="time-total" class="text-dark-400">0:00</span>
+                    </div>
+                </div>
+
+                <!-- Word Timeline -->
+                <div class="glass rounded-xl p-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-xs font-medium text-dark-400 uppercase tracking-wider">Таймлайн слов</span>
+                        <span class="text-xs text-dark-500">Клик для перехода • Двойной клик для редактирования</span>
+                    </div>
+                    <div id="word-timeline" class="leading-relaxed text-dark-300">
+                        <!-- Words will be rendered here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right: Controls Panel -->
+        <aside class="w-80 glass border-l border-white/5 flex flex-col flex-shrink-0">
+            <!-- Tabs -->
+            <div class="flex border-b border-white/5">
+                <button class="tab-btn flex-1 px-4 py-3 text-sm font-medium border-b-2 transition-all data-[active=true]:text-white data-[active=true]:border-brand-500 text-dark-400 border-transparent"
+                        data-tab="subtitles" data-active="true" onclick="Editor.switchTab('subtitles')">
+                    Субтитры
+                </button>
+                <button class="tab-btn flex-1 px-4 py-3 text-sm font-medium border-b-2 transition-all data-[active=true]:text-white data-[active=true]:border-brand-500 text-dark-400 border-transparent"
+                        data-tab="style" onclick="Editor.switchTab('style')">
+                    Стиль
+                </button>
+                <button class="tab-btn flex-1 px-4 py-3 text-sm font-medium border-b-2 transition-all data-[active=true]:text-white data-[active=true]:border-brand-500 text-dark-400 border-transparent"
+                        data-tab="export" onclick="Editor.switchTab('export')">
+                    Экспорт
+                </button>
+            </div>
+
+            <!-- Tab Content -->
+            <div class="flex-1 overflow-y-auto scrollbar-thin">
+                <!-- Subtitles Tab -->
+                <div id="tab-subtitles" class="tab-content p-4 space-y-2">
+                    <div id="subtitles-list">
+                        <!-- Subtitles will be rendered here -->
+                    </div>
+                </div>
+
+                <!-- Style Tab -->
+                <div id="tab-style" class="tab-content p-4 space-y-6 hidden">
+                    <!-- Format -->
+                    <div>
+                        <label class="text-xs font-medium text-dark-400 uppercase tracking-wider mb-3 block">Формат видео</label>
+                        <div class="grid grid-cols-3 gap-2">
+                            <button class="format-btn px-3 py-4 bg-dark-800/50 rounded-xl border-2 border-white/10 data-[active=true]:border-brand-500 data-[active=true]:bg-brand-500/10 flex flex-col items-center gap-2 transition-all" data-format="9:16" data-active="true" onclick="Editor.setFormat('9:16')">
+                                <div class="w-6 h-10 border-2 border-current rounded text-dark-400"></div>
+                                <span class="text-xs text-dark-400">9:16</span>
+                                <span class="text-[10px] text-dark-600">Shorts</span>
+                            </button>
+                            <button class="format-btn px-3 py-4 bg-dark-800/50 rounded-xl border-2 border-white/10 data-[active=true]:border-brand-500 data-[active=true]:bg-brand-500/10 flex flex-col items-center gap-2 transition-all" data-format="1:1" onclick="Editor.setFormat('1:1')">
+                                <div class="w-8 h-8 border-2 border-current rounded text-dark-400"></div>
+                                <span class="text-xs text-dark-400">1:1</span>
+                                <span class="text-[10px] text-dark-600">Квадрат</span>
+                            </button>
+                            <button class="format-btn px-3 py-4 bg-dark-800/50 rounded-xl border-2 border-white/10 data-[active=true]:border-brand-500 data-[active=true]:bg-brand-500/10 flex flex-col items-center gap-2 transition-all" data-format="16:9" onclick="Editor.setFormat('16:9')">
+                                <div class="w-10 h-6 border-2 border-current rounded text-dark-400"></div>
+                                <span class="text-xs text-dark-400">16:9</span>
+                                <span class="text-[10px] text-dark-600">YouTube</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Subtitle Style -->
+                    <div>
+                        <label class="text-xs font-medium text-dark-400 uppercase tracking-wider mb-3 block">Стиль субтитров</label>
+                        <div class="space-y-2">
+                            <button class="style-btn w-full p-3 bg-dark-800/50 rounded-xl border-2 border-white/10 data-[active=true]:border-brand-500 data-[active=true]:bg-brand-500/10 text-left transition-all" data-style="clean" data-active="true" onclick="Editor.setStyle('clean')">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-sm text-white font-medium">Чистый</span>
+                                    <span class="px-2 py-0.5 bg-black/50 text-white text-xs rounded">Пример</span>
+                                </div>
+                                <p class="text-xs text-dark-500 mt-1">Простой белый текст с тенью</p>
+                            </button>
+                            <button class="style-btn w-full p-3 bg-dark-800/50 rounded-xl border-2 border-white/10 data-[active=true]:border-brand-500 data-[active=true]:bg-brand-500/10 text-left transition-all" data-style="bold" onclick="Editor.setStyle('bold')">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-sm text-white font-medium">Жирный</span>
+                                    <span class="px-2 py-0.5 bg-yellow-400 text-black text-xs rounded font-bold">Пример</span>
+                                </div>
+                                <p class="text-xs text-dark-500 mt-1">Жёлтое выделение жирным</p>
+                            </button>
+                            <button class="style-btn w-full p-3 bg-dark-800/50 rounded-xl border-2 border-white/10 data-[active=true]:border-brand-500 data-[active=true]:bg-brand-500/10 text-left transition-all" data-style="neon" onclick="Editor.setStyle('neon')">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-sm text-white font-medium">Неон</span>
+                                    <span class="px-2 py-0.5 bg-transparent text-cyan-400 text-xs rounded border border-cyan-400" style="text-shadow: 0 0 10px cyan">Пример</span>
+                                </div>
+                                <p class="text-xs text-dark-500 mt-1">Светящийся неоновый эффект</p>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Font Size -->
+                    <div>
+                        <label class="text-xs font-medium text-dark-400 uppercase tracking-wider mb-3 block">Размер шрифта</label>
+                        <div class="flex items-center gap-3">
+                            <input type="range" id="font-size" min="16" max="48" value="24" class="flex-1 accent-brand-500" onchange="Editor.setFontSize(this.value)">
+                            <span id="font-size-val" class="text-sm text-white font-mono w-10">24px</span>
+                        </div>
+                    </div>
+
+                    <!-- Position -->
+                    <div>
+                        <label class="text-xs font-medium text-dark-400 uppercase tracking-wider mb-3 block">Позиция</label>
+                        <div class="grid grid-cols-3 gap-2">
+                            <button class="pos-btn px-3 py-2 bg-dark-800/50 rounded-lg border-2 border-white/10 data-[active=true]:border-brand-500 text-xs text-dark-300 transition-all" data-pos="top" onclick="Editor.setPosition('top')">Сверху</button>
+                            <button class="pos-btn px-3 py-2 bg-dark-800/50 rounded-lg border-2 border-white/10 data-[active=true]:border-brand-500 text-xs text-dark-300 transition-all" data-pos="center" data-active="true" onclick="Editor.setPosition('center')">Центр</button>
+                            <button class="pos-btn px-3 py-2 bg-dark-800/50 rounded-lg border-2 border-white/10 data-[active=true]:border-brand-500 text-xs text-dark-300 transition-all" data-pos="bottom" onclick="Editor.setPosition('bottom')">Снизу</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Export Tab -->
+                <div id="tab-export" class="tab-content p-4 space-y-6 hidden">
+                    <!-- Quality -->
+                    <div>
+                        <label class="text-xs font-medium text-dark-400 uppercase tracking-wider mb-3 block">Качество</label>
+                        <div class="space-y-2">
+                            <button class="quality-btn w-full p-3 bg-dark-800/50 rounded-xl border-2 border-white/10 data-[active=true]:border-brand-500 data-[active=true]:bg-brand-500/10 text-left transition-all flex items-center justify-between" data-quality="1080" data-active="true" onclick="Editor.setQuality('1080')">
+                                <div>
+                                    <span class="text-sm text-white font-medium">Full HD</span>
+                                    <p class="text-xs text-dark-500">1080p • Лучшее качество</p>
+                                </div>
+                                <span class="text-xs text-dark-500">1 кредит</span>
+                            </button>
+                            <button class="quality-btn w-full p-3 bg-dark-800/50 rounded-xl border-2 border-white/10 data-[active=true]:border-brand-500 data-[active=true]:bg-brand-500/10 text-left transition-all flex items-center justify-between" data-quality="720" onclick="Editor.setQuality('720')">
+                                <div>
+                                    <span class="text-sm text-white font-medium">HD</span>
+                                    <p class="text-xs text-dark-500">720p • Хорошее качество</p>
+                                </div>
+                                <span class="text-xs text-dark-500">1 кредит</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Export Info -->
+                    <div class="glass rounded-xl p-4">
+                        <h4 class="text-sm font-medium text-white mb-3">Настройки экспорта</h4>
+                        <div class="space-y-2 text-xs">
+                            <div class="flex justify-between">
+                                <span class="text-dark-500">Формат</span>
+                                <span id="export-format" class="text-white">9:16 (Shorts)</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-dark-500">Качество</span>
+                                <span id="export-quality" class="text-white">1080p</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-dark-500">Длительность</span>
+                                <span id="export-duration" class="text-white">0:00</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-dark-500">Субтитры</span>
+                                <span id="export-subtitles" class="text-white">0 строк</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Export Button -->
+                    <button onclick="Editor.export()" class="w-full px-6 py-4 bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white font-semibold rounded-xl transition-all btn-glow flex items-center justify-center gap-3">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+                        </svg>
+                        Экспортировать видео
+                    </button>
+                </div>
+            </div>
+        </aside>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// =============================================================================
+// РЕДАКТОР КЛИПА - Профессиональный видеоредактор
+// =============================================================================
+const Editor = {
+    // Локализация
+    i18n: {
+        loading: 'Загрузка...',
+        loadingVideo: 'Загрузка видео...',
+        noSubtitles: 'Нет субтитров',
+        noWords: 'Слова не найдены',
+        editWord: 'Редактировать слово:',
+        renderComplete: 'Рендеринг завершён!',
+        renderFailed: 'Ошибка рендеринга: ',
+        loadFailed: 'Ошибка загрузки клипа: ',
+        noVideo: 'Видео недоступно. Сначала создайте рендер.',
+        lines: 'строк',
+        clip: 'Клип'
+    },
+
+    // State
+    clipId: '{{ clip_id }}',
+    clip: null,
+    subtitles: [],
+    words: [],
+    currentTime: 0,
+    duration: 0,
+    isPlaying: false,
+    selectedSubtitleIdx: null,
+
+    // Settings
+    settings: {
+        format: '9:16',
+        style: 'clean',
+        fontSize: 24,
+        position: 'center',
+        quality: '1080'
+    },
+
+    // Elements
+    els: {},
+
+    // ===========================================
+    // Initialize
+    // ===========================================
+    async init() {
+        this.els = {
+            video: document.getElementById('video-player'),
+            placeholder: document.getElementById('video-placeholder'),
+            subtitleOverlay: document.getElementById('subtitle-overlay'),
+            subtitleText: document.getElementById('subtitle-text'),
+            playhead: document.getElementById('playhead'),
+            timelineFill: document.getElementById('timeline-fill'),
+            timeCurrent: document.getElementById('time-current'),
+            timeTotal: document.getElementById('time-total'),
+            wordTimeline: document.getElementById('word-timeline'),
+            subtitlesList: document.getElementById('subtitles-list'),
+            videoContainer: document.getElementById('video-container'),
+            waveform: document.getElementById('waveform'),
+            clipTitle: document.getElementById('clip-title'),
+        };
+
+        // Generate waveform
+        this.generateWaveform();
+
+        // Setup video events
+        this.setupVideoEvents();
+
+        // Load clip
+        await this.loadClip();
+    },
+
+    // ===========================================
+    // Load Clip Data
+    // ===========================================
+    async loadClip() {
+        try {
+            const clip = await App.api(`/api/clips/${this.clipId}`);
+            this.clip = clip;
+            this.subtitles = clip.subtitles || [];
+            this.duration = clip.duration || 0;
+            this.settings.style = clip.style_preset || 'clean';
+            this.settings.fontSize = parseInt(clip.font_size) || 24;
+            this.settings.position = clip.position || 'center';
+
+            // Extract words from subtitles
+            this.extractWords();
+
+            // Update UI
+            this.els.clipTitle.textContent = `${this.i18n.clip} • ${this.formatTime(this.duration)}`;
+            this.updateVideoPlayer();
+            this.renderSubtitles();
+            this.renderWordTimeline();
+            this.updateStyleUI();
+            this.updateExportInfo();
+
+        } catch (e) {
+            App.showToast(this.i18n.loadFailed + e.message, 'error');
+        }
+    },
+
+    // ===========================================
+    // Video Player
+    // ===========================================
+    updateVideoPlayer() {
+        let videoUrl = null;
+        if (this.clip?.video_filename) {
+            videoUrl = `/api/video/preview/${encodeURIComponent(this.clip.video_filename)}?v=${Date.now()}`;
+        } else if (this.clip?.video_url) {
+            videoUrl = this.clip.video_url;
+        }
+
+        if (!videoUrl) {
+            this.els.placeholder.classList.remove('hidden');
+            return;
+        }
+
+        this.els.video.src = videoUrl;
+        this.els.video.load();
+    },
+
+    setupVideoEvents() {
+        this.els.video.addEventListener('loadedmetadata', () => {
+            this.duration = this.els.video.duration;
+            this.els.timeTotal.textContent = this.formatTime(this.duration);
+            this.els.placeholder.classList.add('hidden');
+            this.updateExportInfo();
+        });
+
+        this.els.video.addEventListener('timeupdate', () => {
+            this.currentTime = this.els.video.currentTime;
+            const progress = this.duration > 0 ? (this.currentTime / this.duration) * 100 : 0;
+
+            this.els.playhead.style.left = `${progress}%`;
+            this.els.timelineFill.style.width = `${progress}%`;
+            this.els.timeCurrent.textContent = this.formatTime(this.currentTime);
+
+            this.updateCurrentSubtitle();
+            this.highlightCurrentWord();
+        });
+
+        this.els.video.addEventListener('play', () => {
+            this.isPlaying = true;
+            document.getElementById('icon-play').classList.add('hidden');
+            document.getElementById('icon-pause').classList.remove('hidden');
+        });
+
+        this.els.video.addEventListener('pause', () => {
+            this.isPlaying = false;
+            document.getElementById('icon-play').classList.remove('hidden');
+            document.getElementById('icon-pause').classList.add('hidden');
+        });
+
+        this.els.video.addEventListener('error', () => {
+            this.els.placeholder.classList.remove('hidden');
+        });
+    },
+
+    togglePlay() {
+        if (this.isPlaying) {
+            this.els.video.pause();
+        } else {
+            this.els.video.play();
+        }
+    },
+
+    seek(event) {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const percent = (event.clientX - rect.left) / rect.width;
+        this.els.video.currentTime = percent * this.duration;
+    },
+
+    // ===========================================
+    // Subtitles
+    // ===========================================
+    extractWords() {
+        this.words = [];
+        this.subtitles.forEach((sub, idx) => {
+            const words = sub.text.split(/\s+/);
+            const wordDuration = (sub.end - sub.start) / words.length;
+
+            words.forEach((word, wordIdx) => {
+                this.words.push({
+                    text: word,
+                    start: sub.start + (wordIdx * wordDuration),
+                    end: sub.start + ((wordIdx + 1) * wordDuration),
+                    subtitleIdx: idx
+                });
+            });
+        });
+    },
+
+    renderSubtitles() {
+        if (!this.subtitles.length) {
+            this.els.subtitlesList.innerHTML = `
+                <div class="text-center py-8">
+                    <svg class="w-10 h-10 text-dark-600 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"></path>
+                    </svg>
+                    <p class="text-dark-500 text-sm">${this.i18n.noSubtitles}</p>
+                </div>`;
+            return;
+        }
+
+        this.els.subtitlesList.innerHTML = this.subtitles.map((sub, idx) => `
+            <div class="subtitle-block px-3 py-2 rounded-lg ${idx === this.selectedSubtitleIdx ? 'active' : ''}"
+                 data-idx="${idx}" onclick="Editor.selectSubtitle(${idx})">
+                <div class="flex items-center gap-2 mb-1">
+                    <span class="text-[10px] text-dark-500 font-mono px-1.5 py-0.5 bg-dark-800/50 rounded">${this.formatTime(sub.start)}</span>
+                    <span class="text-dark-600">→</span>
+                    <span class="text-[10px] text-dark-500 font-mono px-1.5 py-0.5 bg-dark-800/50 rounded">${this.formatTime(sub.end)}</span>
+                </div>
+                <input type="text" value="${this.escapeHtml(sub.text)}"
+                       class="subtitle-input"
+                       onchange="Editor.updateSubtitle(${idx}, this.value)"
+                       onclick="event.stopPropagation()"
+                       onfocus="Editor.selectSubtitle(${idx})">
+            </div>
+        `).join('');
+    },
+
+    renderWordTimeline() {
+        if (!this.words.length) {
+            this.els.wordTimeline.innerHTML = `<span class="text-dark-500">${this.i18n.noWords}</span>`;
+            return;
+        }
+
+        this.els.wordTimeline.innerHTML = this.words.map((word, idx) => `
+            <span class="word-item" data-idx="${idx}" data-start="${word.start}"
+                  onclick="Editor.jumpToWord(${idx})"
+                  ondblclick="Editor.editWord(${idx})">${this.escapeHtml(word.text)}</span>
+        `).join(' ');
+    },
+
+    selectSubtitle(idx) {
+        this.selectedSubtitleIdx = idx;
+        document.querySelectorAll('.subtitle-block').forEach((el, i) => {
+            el.classList.toggle('active', i === idx);
+        });
+
+        const sub = this.subtitles[idx];
+        if (sub) {
+            this.els.video.currentTime = sub.start;
+        }
+    },
+
+    updateSubtitle(idx, text) {
+        this.subtitles[idx].text = text;
+        this.extractWords();
+        this.renderWordTimeline();
+        this.saveSubtitles();
+    },
+
+    updateCurrentSubtitle() {
+        const currentSub = this.subtitles.find(s =>
+            this.currentTime >= s.start && this.currentTime <= s.end
+        );
+
+        if (currentSub) {
+            this.els.subtitleText.textContent = currentSub.text;
+            this.els.subtitleOverlay.classList.remove('hidden');
+        } else {
+            this.els.subtitleOverlay.classList.add('hidden');
+        }
+    },
+
+    highlightCurrentWord() {
+        document.querySelectorAll('.word-item').forEach(el => {
+            el.classList.remove('playing', 'active');
+        });
+
+        const currentWord = this.words.find(w =>
+            this.currentTime >= w.start && this.currentTime <= w.end
+        );
+
+        if (currentWord) {
+            const idx = this.words.indexOf(currentWord);
+            const el = document.querySelector(`.word-item[data-idx="${idx}"]`);
+            if (el) {
+                el.classList.add('playing');
+            }
+        }
+    },
+
+    jumpToWord(idx) {
+        const word = this.words[idx];
+        if (word) {
+            this.els.video.currentTime = word.start;
+        }
+    },
+
+    editWord(idx) {
+        const word = this.words[idx];
+        const newText = prompt(this.i18n.editWord, word.text);
+        if (newText !== null && newText !== word.text) {
+            // Update word in subtitle
+            const sub = this.subtitles[word.subtitleIdx];
+            const words = sub.text.split(/\s+/);
+            const wordInSubIdx = this.words.filter(w => w.subtitleIdx === word.subtitleIdx && this.words.indexOf(w) < idx).length;
+            words[wordInSubIdx] = newText;
+            sub.text = words.join(' ');
+
+            this.extractWords();
+            this.renderSubtitles();
+            this.renderWordTimeline();
+            this.saveSubtitles();
+        }
+    },
+
+    async saveSubtitles() {
+        try {
+            await App.api(`/api/clips/${this.clipId}/subtitles`, {
+                method: 'POST',
+                body: JSON.stringify({ subtitles: this.subtitles })
+            });
+        } catch (e) {
+            console.error('Failed to save subtitles:', e);
+        }
+    },
+
+    // ===========================================
+    // Style & Settings
+    // ===========================================
+    switchTab(tab) {
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.dataset.active = btn.dataset.tab === tab;
+        });
+        document.querySelectorAll('.tab-content').forEach(el => {
+            el.classList.add('hidden');
+        });
+        document.getElementById(`tab-${tab}`).classList.remove('hidden');
+    },
+
+    setFormat(format) {
+        this.settings.format = format;
+        document.querySelectorAll('.format-btn').forEach(btn => {
+            btn.dataset.active = btn.dataset.format === format;
+        });
+
+        // Update video container aspect ratio
+        const aspects = { '9:16': '9/16', '1:1': '1/1', '16:9': '16/9' };
+        const heights = { '9:16': '65vh', '1:1': '55vh', '16:9': '45vh' };
+        this.els.videoContainer.style.aspectRatio = aspects[format];
+        this.els.videoContainer.style.height = heights[format];
+
+        this.updateExportInfo();
+    },
+
+    setStyle(style) {
+        this.settings.style = style;
+        document.querySelectorAll('.style-btn').forEach(btn => {
+            btn.dataset.active = btn.dataset.style === style;
+        });
+        this.saveStyle();
+    },
+
+    setFontSize(size) {
+        this.settings.fontSize = parseInt(size);
+        document.getElementById('font-size-val').textContent = `${size}px`;
+        this.saveStyle();
+    },
+
+    setPosition(pos) {
+        this.settings.position = pos;
+        document.querySelectorAll('.pos-btn').forEach(btn => {
+            btn.dataset.active = btn.dataset.pos === pos;
+        });
+        this.saveStyle();
+    },
+
+    setQuality(quality) {
+        this.settings.quality = quality;
+        document.querySelectorAll('.quality-btn').forEach(btn => {
+            btn.dataset.active = btn.dataset.quality === quality;
+        });
+        this.updateExportInfo();
+    },
+
+    updateStyleUI() {
+        document.querySelectorAll('.format-btn').forEach(btn => {
+            btn.dataset.active = btn.dataset.format === this.settings.format;
+        });
+        document.querySelectorAll('.style-btn').forEach(btn => {
+            btn.dataset.active = btn.dataset.style === this.settings.style;
+        });
+        document.querySelectorAll('.pos-btn').forEach(btn => {
+            btn.dataset.active = btn.dataset.pos === this.settings.position;
+        });
+        document.getElementById('font-size').value = this.settings.fontSize;
+        document.getElementById('font-size-val').textContent = `${this.settings.fontSize}px`;
+    },
+
+    async saveStyle() {
+        try {
+            await App.api(`/api/clips/${this.clipId}/style`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    style_preset: this.settings.style,
+                    font_size: this.settings.fontSize,
+                    position: this.settings.position
+                })
+            });
+        } catch (e) {
+            console.error('Failed to save style:', e);
+        }
+    },
+
+    updateExportInfo() {
+        const formatLabels = { '9:16': '9:16 (Shorts)', '1:1': '1:1 (Квадрат)', '16:9': '16:9 (YouTube)' };
+        document.getElementById('export-format').textContent = formatLabels[this.settings.format];
+        document.getElementById('export-quality').textContent = `${this.settings.quality}p`;
+        document.getElementById('export-duration').textContent = this.formatTime(this.duration);
+        document.getElementById('export-subtitles').textContent = `${this.subtitles.length} ${this.i18n.lines}`;
+    },
+
+    // ===========================================
+    // Render & Export
+    // ===========================================
+    async render() {
+        const btn = document.getElementById('btn-render');
+        const status = document.getElementById('render-status');
+
+        btn.disabled = true;
+        status.classList.remove('hidden');
+
+        try {
+            await this.saveSubtitles();
+            const result = await App.api('/api/video/render-clip', {
+                method: 'POST',
+                body: JSON.stringify({
+                    clip_id: this.clipId,
+                    template: 'shorts-vertical'
+                })
+            });
+
+            this.pollRender(result.job_id);
+
+        } catch (e) {
+            App.showToast(this.i18n.renderFailed + e.message, 'error');
+            btn.disabled = false;
+            status.classList.add('hidden');
+        }
+    },
+
+    async pollRender(jobId) {
+        try {
+            const result = await App.api(`/api/video/jobs/${jobId}`);
+
+            if (result.status === 'completed') {
+                App.showToast(this.i18n.renderComplete);
+                document.getElementById('btn-render').disabled = false;
+                document.getElementById('render-status').classList.add('hidden');
+                await this.loadClip();
+            } else if (result.status === 'failed') {
+                App.showToast(this.i18n.renderFailed + (result.error || 'Unknown error'), 'error');
+                document.getElementById('btn-render').disabled = false;
+                document.getElementById('render-status').classList.add('hidden');
+            } else {
+                setTimeout(() => this.pollRender(jobId), 2000);
+            }
+        } catch (e) {
+            setTimeout(() => this.pollRender(jobId), 2000);
+        }
+    },
+
+    async export() {
+        await this.render();
+    },
+
+    download() {
+        if (this.clip?.video_filename) {
+            window.open(`/api/video/preview/${encodeURIComponent(this.clip.video_filename)}`, '_blank');
+        } else {
+            App.showToast(this.i18n.noVideo, 'error');
+        }
+    },
+
+    // ===========================================
+    // Utilities
+    // ===========================================
+    generateWaveform() {
+        const bars = [];
+        for (let i = 0; i < 100; i++) {
+            const height = 10 + Math.random() * 20;
+            bars.push(`<div class="waveform-bar" style="height: ${height}px"></div>`);
+        }
+        this.els.waveform.innerHTML = bars.join('');
+    },
+
+    formatTime(seconds) {
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
+    },
+
+    escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+};
+
+// Initialize when DOM ready
+document.addEventListener('DOMContentLoaded', () => Editor.init());
+</script>
+{% endblock %}

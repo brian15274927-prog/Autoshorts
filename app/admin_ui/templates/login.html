@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Login{% endblock %}
+
+{% block content %}
+<div class="login-container">
+    <div class="login-card">
+        <div class="login-title">
+            <h1>Admin Login</h1>
+            <p>Enter admin secret to continue</p>
+        </div>
+
+        {% if error %}
+        <div class="alert alert-danger">{{ error }}</div>
+        {% endif %}
+
+        <form method="POST" action="/admin-ui/login">
+            <div class="form-group">
+                <label class="form-label" for="secret">Admin Secret</label>
+                <input
+                    type="password"
+                    id="secret"
+                    name="secret"
+                    class="form-control"
+                    placeholder="Enter ADMIN_SECRET"
+                    autofocus
+                    required
+                >
+            </div>
+            <button type="submit" class="btn btn-primary" style="width: 100%;">
+                Login
+            </button>
+        </form>
+
+        <p style="text-align: center; margin-top: 20px; color: var(--text-muted); font-size: 0.85rem;">
+            Set ADMIN_SECRET in .env file
+        </p>
+    </div>
+</div>
+{% endblock %}

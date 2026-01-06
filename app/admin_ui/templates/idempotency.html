@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Idempotency Keys{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Idempotency Keys</h1>
+    <p>View all idempotency keys across users</p>
+</div>
+
+<div class="card">
+    <form class="search-form" method="GET" action="/admin-ui/idempotency">
+        <input
+            type="text"
+            name="user_id"
+            class="form-control"
+            placeholder="Filter by user ID..."
+            value="{{ user_id or '' }}"
+        >
+        <select name="status" class="form-control" style="max-width: 150px;">
+            <option value="">All statuses</option>
+            <option value="pending" {% if status == 'pending' %}selected{% endif %}>Pending</option>
+            <option value="completed" {% if status == 'completed' %}selected{% endif %}>Completed</option>
+            <option value="failed" {% if status == 'failed' %}selected{% endif %}>Failed</option>
+        </select>
+        <button type="submit" class="btn btn-primary">Filter</button>
+        {% if user_id or status %}
+        <a href="/admin-ui/idempotency" class="btn btn-secondary">Clear</a>
+        {% endif %}
+    </form>
+
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>User ID</th>
+                    <th>Key</th>
+                    <th>Status</th>
+                    <th>Task ID</th>
+                    <th>Job ID</th>
+                    <th>Request Hash</th>
+                    <th>Created At</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for key in keys %}
+                <tr>
+                    <td>{{ key.id }}</td>
+                    <td>
+                        <a href="/admin-ui/users/{{ key.user_id }}" class="mono">{{ key.user_id }}</a>
+                    </td>
+                    <td class="mono truncate" title="{{ key.key }}">{{ key.key }}</td>
+                    <td>
+                        {% if key.status.value == 'completed' %}
+                        <span class="badge badge-success">COMPLETED</span>
+                        {% elif key.status.value == 'pending' %}
+                        <span class="badge badge-warning">PENDING</span>
+                        {% else %}
+                        <span class="badge badge-danger">FAILED</span>
+                        {% endif %}
+                    </td>
+                    <td class="mono truncate">{{ key.task_id or '-' }}</td>
+                    <td class="mono truncate">{{ key.job_id or '-' }}</td>
+                    <td class="mono truncate" title="{{ key.request_hash }}">{{ key.request_hash[:12] }}...</td>
+                    <td>{{ key.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="8" class="empty-state">
+                        {% if user_id or status %}
+                        No keys found matching filters
+                        {% else %}
+                        No idempotency keys yet
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

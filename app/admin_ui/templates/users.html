@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Users{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Users</h1>
+    <p>Manage user accounts and credits</p>
+</div>
+
+<div class="card">
+    <form class="search-form" method="GET" action="/admin-ui/users">
+        <input
+            type="text"
+            name="search"
+            class="form-control"
+            placeholder="Search by user ID..."
+            value="{{ search or '' }}"
+        >
+        <button type="submit" class="btn btn-primary">Search</button>
+        {% if search %}
+        <a href="/admin-ui/users" class="btn btn-secondary">Clear</a>
+        {% endif %}
+    </form>
+
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>User ID</th>
+                    <th>Email</th>
+                    <th>Plan</th>
+                    <th>Credits</th>
+                    <th>Created At</th>
+                    <th>Updated At</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td>
+                        <a href="/admin-ui/users/{{ user.user_id }}" class="mono">{{ user.user_id }}</a>
+                    </td>
+                    <td>{{ user.email or '-' }}</td>
+                    <td>
+                        {% if user.plan.value == 'pro' %}
+                        <span class="badge badge-info">PRO</span>
+                        {% elif user.plan.value == 'enterprise' %}
+                        <span class="badge badge-success">ENTERPRISE</span>
+                        {% else %}
+                        <span class="badge badge-secondary">FREE</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if user.plan.value == 'enterprise' %}
+                        <span style="color: var(--success);">Unlimited</span>
+                        {% else %}
+                        {{ user.credits }}
+                        {% endif %}
+                    </td>
+                    <td>{{ user.created_at.strftime('%Y-%m-%d %H:%M') if user.created_at else '-' }}</td>
+                    <td>{{ user.updated_at.strftime('%Y-%m-%d %H:%M') if user.updated_at else '-' }}</td>
+                    <td>
+                        <a href="/admin-ui/users/{{ user.user_id }}" class="btn btn-sm btn-primary">View</a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" class="empty-state">
+                        {% if search %}
+                        No users found matching "{{ search }}"
+                        {% else %}
+                        No users yet
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
