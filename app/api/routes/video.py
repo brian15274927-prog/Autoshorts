@@ -751,6 +751,7 @@ async def start_revideo_server():
 # Path to Revideo output directory - using BASE_DIR pattern
 BASE_DIR = Path(__file__).resolve().parents[3]  # C:/dake
 REVIDEO_OUTPUT_DIR = BASE_DIR / "app" / "video_engine" / "revideo" / "output"
+SHORTS_CLIPS_DIR = BASE_DIR / "data" / "shorts"
 
 
 def _serve_video(filename: str):
@@ -769,6 +770,14 @@ def _serve_video(filename: str):
         )
 
     video_path = REVIDEO_OUTPUT_DIR / filename
+
+    # If not in Revideo output, search in YouTube Shorts clips directories
+    if not video_path.exists():
+        for clips_dir in SHORTS_CLIPS_DIR.glob("*/clips"):
+            candidate = clips_dir / filename
+            if candidate.exists():
+                video_path = candidate
+                break
 
     if not video_path.exists():
         raise HTTPException(

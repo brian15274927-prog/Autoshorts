@@ -33,6 +33,7 @@ FFPROBE_PATH = r"C:\dake\tools\ffmpeg-master-latest-win64-gpl\bin\ffprobe.exe"
 # Fallback paths
 if not os.path.exists(FFMPEG_PATH):
     fallback_paths = [
+        r"C:\Users\user\AppData\Local\Programs\Python\Python313\Lib\site-packages\imageio_ffmpeg\binaries\ffmpeg.exe",
         r"C:\ffmpeg\bin\ffmpeg.exe",
         r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
     ]

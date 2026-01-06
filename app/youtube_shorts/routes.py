@@ -298,9 +298,8 @@ async def create_clip(request: CreateClipRequest):
         )
 
         # Create a clip record in the database for the Editor
-        from app.api.dependencies import get_clips_repo
-        from app.persistence.clips_repo import ClipRecord, Subtitle
-        clips_repo = get_clips_repo()
+        from app.persistence.clips_repo import get_clips_repository, ClipRecord, Subtitle
+        clips_repo = get_clips_repository()
 
         # Convert words to subtitles format
         subtitles = []

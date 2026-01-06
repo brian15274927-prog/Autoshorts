@@ -262,9 +262,30 @@ class DirectorEngine:
             })
 
         # Find clip boundaries using sliding window
-        window_segments = 5  # Look at groups of 5 segments
+        window_segments = min(5, len(segment_scores))  # Look at groups of segments (max 5)
 
-        for i in range(0, len(segment_scores) - window_segments, window_segments // 2):
+        # Handle short videos: if we have few segments, create clip from all of them
+        if len(segment_scores) <= window_segments and segment_scores:
+            start_time = segment_scores[0]["start"]
+            end_time = segment_scores[-1]["end"]
+            duration = end_time - start_time
+            if min_duration <= duration <= max_duration or (duration > 0 and duration < min_duration * 2):
+                avg_score = sum(s["score"] for s in segment_scores) / len(segment_scores)
+                text_preview = " ".join(s["segment"].get("text", "") for s in segment_scores)[:200]
+                clips.append(ClipDecision(
+                    clip_id=f"clip_{uuid.uuid4().hex[:8]}",
+                    start=start_time,
+                    end=min(end_time, start_time + max_duration),
+                    duration=min(duration, max_duration),
+                    reason="Full segment clip (short video)",
+                    score=avg_score,
+                    suggested_style=ClipStyle.DEFAULT,
+                    title=f"Clip at {int(start_time // 60)}:{int(start_time % 60):02d}",
+                    text_preview=text_preview,
+                    keywords=[]
+                ))
+
+        for i in range(0, max(1, len(segment_scores) - window_segments + 1), max(1, window_segments // 2)):
             window = segment_scores[i:i + window_segments]
             if not window:
                 continue
