@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+
+{% block title %}Главная{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<section class="hero-bg min-h-screen flex items-center">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
+        <div class="text-center max-w-4xl mx-auto">
+            <div class="inline-flex items-center gap-2 px-4 py-2 bg-violet-500/10 border border-violet-500/20 rounded-full mb-8">
+                <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                <span class="text-sm text-violet-300">Платформа готова к работе</span>
+            </div>
+
+            <h1 class="text-5xl md:text-7xl font-extrabold mb-6 leading-tight">
+                <span class="bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">Создавай короткие видео</span>
+                <br>
+                <span class="bg-gradient-to-r from-violet-400 to-cyan-400 bg-clip-text text-transparent">с озвучкой за 1 минуту</span>
+            </h1>
+
+            <p class="text-xl md:text-2xl text-slate-400 mb-10 max-w-2xl mx-auto">
+                Загрузи текст — получи готовое видео для TikTok, Reels и Shorts
+            </p>
+
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                <a href="/app/create" class="px-8 py-4 bg-gradient-to-r from-violet-600 to-violet-500 hover:from-violet-500 hover:to-violet-400 text-white font-semibold rounded-xl text-lg transition-all btn-glow">
+                    Начать создание
+                    <svg class="inline-block w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"></path>
+                    </svg>
+                </a>
+                <a href="#how-it-works" class="px-8 py-4 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-xl text-lg transition-all border border-slate-700">
+                    Как это работает
+                </a>
+            </div>
+
+            <!-- Stats -->
+            <div class="mt-20 grid grid-cols-3 gap-8 max-w-lg mx-auto">
+                <div>
+                    <div class="text-3xl font-bold text-white">30с</div>
+                    <div class="text-slate-500 text-sm">Среднее время</div>
+                </div>
+                <div>
+                    <div class="text-3xl font-bold text-white">1080p</div>
+                    <div class="text-slate-500 text-sm">Качество видео</div>
+                </div>
+                <div>
+                    <div class="text-3xl font-bold text-white">AI</div>
+                    <div class="text-slate-500 text-sm">Озвучка</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Features Section -->
+<section class="py-24 bg-slate-950">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center mb-16">
+            <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">Что умеет сервис</h2>
+            <p class="text-slate-400 text-lg">Всё для создания вертикальных видео</p>
+        </div>
+
+        <div class="grid md:grid-cols-3 gap-8">
+            <!-- Feature 1 -->
+            <div class="gradient-card p-8 rounded-2xl border border-slate-800 card-hover">
+                <div class="feature-icon mb-6">
+                    🎬
+                </div>
+                <h3 class="text-xl font-bold text-white mb-3">Авто-монтаж</h3>
+                <p class="text-slate-400">Автоматическая нарезка сцен под озвучку. Переходы и тайминги подбираются за тебя.</p>
+            </div>
+
+            <!-- Feature 2 -->
+            <div class="gradient-card p-8 rounded-2xl border border-slate-800 card-hover">
+                <div class="feature-icon mb-6">
+                    📝
+                </div>
+                <h3 class="text-xl font-bold text-white mb-3">Субтитры</h3>
+                <p class="text-slate-400">Субтитры с подсветкой слов синхронизируются с голосом. SRT файл в комплекте.</p>
+            </div>
+
+            <!-- Feature 3 -->
+            <div class="gradient-card p-8 rounded-2xl border border-slate-800 card-hover">
+                <div class="feature-icon mb-6">
+                    🎵
+                </div>
+                <h3 class="text-xl font-bold text-white mb-3">Музыка</h3>
+                <p class="text-slate-400">Фоновая музыка автоматически подстраивается под громкость голоса.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- How it Works Section -->
+<section id="how-it-works" class="py-24 bg-slate-900">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center mb-16">
+            <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">Как это работает</h2>
+            <p class="text-slate-400 text-lg">Три простых шага до готового видео</p>
+        </div>
+
+        <div class="grid md:grid-cols-3 gap-12">
+            <!-- Step 1 -->
+            <div class="text-center">
+                <div class="step-number mx-auto mb-6">1</div>
+                <h3 class="text-xl font-bold text-white mb-3">Загрузи контент</h3>
+                <p class="text-slate-400">Текст сценария, аудио-файл и фоновые изображения или видео.</p>
+            </div>
+
+            <!-- Step 2 -->
+            <div class="text-center">
+                <div class="step-number mx-auto mb-6">2</div>
+                <h3 class="text-xl font-bold text-white mb-3">Настрой параметры</h3>
+                <p class="text-slate-400">Выбери разрешение, шрифт субтитров и фоновую музыку.</p>
+            </div>
+
+            <!-- Step 3 -->
+            <div class="text-center">
+                <div class="step-number mx-auto mb-6">3</div>
+                <h3 class="text-xl font-bold text-white mb-3">Скачай результат</h3>
+                <p class="text-slate-400">Получи готовое видео в формате MP4 и субтитры в SRT.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- CTA Section -->
+<section class="py-24 bg-slate-950">
+    <div class="max-w-4xl mx-auto px-4 text-center">
+        <div class="gradient-card p-12 rounded-3xl border border-slate-800 glow-violet">
+            <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">Готов создать видео?</h2>
+            <p class="text-slate-400 text-lg mb-8">Первые 3 видео — бесплатно. Без карты и регистрации.</p>
+            <a href="/app/create" class="inline-flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-violet-600 to-cyan-600 hover:from-violet-500 hover:to-cyan-500 text-white font-semibold rounded-xl text-lg transition-all btn-glow">
+                Начать бесплатно
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"></path>
+                </svg>
+            </a>
+        </div>
+    </div>
+</section>
+{% endblock %}

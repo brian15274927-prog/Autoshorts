@@ -1,0 +1,455 @@
+{% extends "base.html" %}
+
+{% block title %}YouTube → Shorts{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gradient-to-b from-slate-900 to-slate-950 py-8">
+    <div class="max-w-4xl mx-auto px-4">
+        <!-- Header -->
+        <div class="text-center mb-12">
+            <h1 class="text-4xl font-bold text-white mb-4">
+                YouTube → Shorts
+            </h1>
+            <p class="text-slate-400 text-lg">
+                Вставьте ссылку на YouTube видео и получите готовые клипы для Shorts
+            </p>
+        </div>
+
+        <!-- URL Input Card -->
+        <div id="input-section" class="bg-slate-800/50 rounded-2xl p-8 border border-slate-700 mb-8">
+            <div class="space-y-6">
+                <!-- URL Input -->
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-2">
+                        Ссылка на YouTube видео
+                    </label>
+                    <div class="flex gap-4">
+                        <div class="flex-1 relative">
+                            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                <svg class="w-5 h-5 text-red-500" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                                </svg>
+                            </div>
+                            <input
+                                type="text"
+                                id="youtube-url"
+                                class="w-full bg-slate-900 border border-slate-600 rounded-xl py-4 pl-12 pr-4 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                                placeholder="https://www.youtube.com/watch?v=..."
+                            >
+                        </div>
+                        <button
+                            id="btn-process"
+                            class="px-8 py-4 bg-gradient-to-r from-violet-600 to-violet-500 hover:from-violet-500 hover:to-violet-400 text-white font-semibold rounded-xl transition-all flex items-center gap-2"
+                        >
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                            </svg>
+                            Найти клипы
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Options -->
+                <div class="grid grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-400 mb-2">Макс. клипов</label>
+                        <select id="max-clips" class="w-full bg-slate-900 border border-slate-600 rounded-lg py-2 px-3 text-white">
+                            <option value="5">5 клипов</option>
+                            <option value="10" selected>10 клипов</option>
+                            <option value="15">15 клипов</option>
+                            <option value="20">20 клипов</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-400 mb-2">Мин. длина</label>
+                        <select id="min-duration" class="w-full bg-slate-900 border border-slate-600 rounded-lg py-2 px-3 text-white">
+                            <option value="5" selected>5 сек</option>
+                            <option value="10">10 сек</option>
+                            <option value="15">15 сек</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-400 mb-2">Макс. длина</label>
+                        <select id="max-duration" class="w-full bg-slate-900 border border-slate-600 rounded-lg py-2 px-3 text-white">
+                            <option value="30">30 сек</option>
+                            <option value="60" selected>60 сек</option>
+                            <option value="90">90 сек</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Processing Status -->
+        <div id="processing-section" class="hidden">
+            <div class="bg-slate-800/50 rounded-2xl p-8 border border-slate-700 mb-8">
+                <div class="text-center">
+                    <!-- Spinner -->
+                    <div class="inline-flex items-center justify-center w-16 h-16 mb-6">
+                        <div class="w-12 h-12 border-4 border-violet-500/30 border-t-violet-500 rounded-full animate-spin"></div>
+                    </div>
+
+                    <h2 id="status-title" class="text-2xl font-bold text-white mb-2">Обработка видео...</h2>
+                    <p id="status-message" class="text-slate-400">Загрузка видео с YouTube...</p>
+
+                    <!-- Progress Steps -->
+                    <div class="flex justify-center gap-8 mt-8">
+                        <div id="step-download" class="flex items-center gap-2 text-slate-500">
+                            <div class="w-8 h-8 rounded-full border-2 border-current flex items-center justify-center">
+                                <svg class="w-4 h-4 hidden" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                                </svg>
+                                <span class="step-number">1</span>
+                            </div>
+                            <span>Загрузка</span>
+                        </div>
+                        <div id="step-transcribe" class="flex items-center gap-2 text-slate-500">
+                            <div class="w-8 h-8 rounded-full border-2 border-current flex items-center justify-center">
+                                <svg class="w-4 h-4 hidden" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                                </svg>
+                                <span class="step-number">2</span>
+                            </div>
+                            <span>Транскрипция</span>
+                        </div>
+                        <div id="step-detect" class="flex items-center gap-2 text-slate-500">
+                            <div class="w-8 h-8 rounded-full border-2 border-current flex items-center justify-center">
+                                <svg class="w-4 h-4 hidden" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                                </svg>
+                                <span class="step-number">3</span>
+                            </div>
+                            <span>Поиск клипов</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div id="results-section" class="hidden">
+            <!-- Video Info -->
+            <div id="video-info" class="bg-slate-800/50 rounded-2xl p-6 border border-slate-700 mb-6">
+                <div class="flex items-start gap-4">
+                    <div class="w-32 h-20 bg-slate-700 rounded-lg flex-shrink-0 overflow-hidden">
+                        <img id="video-thumbnail" src="" alt="" class="w-full h-full object-cover hidden">
+                    </div>
+                    <div class="flex-1">
+                        <h3 id="video-title" class="text-lg font-semibold text-white mb-1">Название видео</h3>
+                        <p id="video-channel" class="text-slate-400 text-sm mb-2">Канал</p>
+                        <div class="flex gap-4 text-sm text-slate-500">
+                            <span id="video-duration">0:00</span>
+                            <span id="video-language">Язык: --</span>
+                        </div>
+                    </div>
+                    <a
+                        id="btn-open-editor"
+                        href="#"
+                        class="px-6 py-3 bg-gradient-to-r from-violet-600 to-violet-500 hover:from-violet-500 hover:to-violet-400 text-white font-semibold rounded-xl transition-all flex items-center gap-2"
+                    >
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                        </svg>
+                        Открыть в редакторе
+                    </a>
+                </div>
+            </div>
+
+            <!-- Clips List -->
+            <div class="bg-slate-800/50 rounded-2xl border border-slate-700 overflow-hidden">
+                <div class="p-4 border-b border-slate-700">
+                    <h3 class="text-lg font-semibold text-white">
+                        Найденные клипы
+                        <span id="clips-count" class="text-slate-400 font-normal">(0)</span>
+                    </h3>
+                </div>
+                <div id="clips-list" class="divide-y divide-slate-700">
+                    <!-- Clips will be inserted here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Error Section -->
+        <div id="error-section" class="hidden">
+            <div class="bg-red-900/20 border border-red-500/50 rounded-2xl p-8 text-center">
+                <svg class="w-16 h-16 text-red-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                </svg>
+                <h2 class="text-xl font-bold text-white mb-2">Ошибка обработки</h2>
+                <p id="error-message" class="text-red-400 mb-6">Произошла ошибка</p>
+                <button
+                    onclick="resetForm()"
+                    class="px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white font-semibold rounded-xl transition-all"
+                >
+                    Попробовать снова
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// =============================================================================
+// State
+// =============================================================================
+
+let currentJobId = null;
+let pollInterval = null;
+
+// =============================================================================
+// DOM Elements
+// =============================================================================
+
+const els = {
+    inputSection: document.getElementById('input-section'),
+    processingSection: document.getElementById('processing-section'),
+    resultsSection: document.getElementById('results-section'),
+    errorSection: document.getElementById('error-section'),
+
+    urlInput: document.getElementById('youtube-url'),
+    btnProcess: document.getElementById('btn-process'),
+    maxClips: document.getElementById('max-clips'),
+    minDuration: document.getElementById('min-duration'),
+    maxDuration: document.getElementById('max-duration'),
+
+    statusTitle: document.getElementById('status-title'),
+    statusMessage: document.getElementById('status-message'),
+    stepDownload: document.getElementById('step-download'),
+    stepTranscribe: document.getElementById('step-transcribe'),
+    stepDetect: document.getElementById('step-detect'),
+
+    videoTitle: document.getElementById('video-title'),
+    videoChannel: document.getElementById('video-channel'),
+    videoDuration: document.getElementById('video-duration'),
+    videoLanguage: document.getElementById('video-language'),
+    videoThumbnail: document.getElementById('video-thumbnail'),
+    btnOpenEditor: document.getElementById('btn-open-editor'),
+    clipsCount: document.getElementById('clips-count'),
+    clipsList: document.getElementById('clips-list'),
+
+    errorMessage: document.getElementById('error-message'),
+};
+
+// =============================================================================
+// Functions
+// =============================================================================
+
+function formatDuration(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+function showSection(section) {
+    els.inputSection.classList.add('hidden');
+    els.processingSection.classList.add('hidden');
+    els.resultsSection.classList.add('hidden');
+    els.errorSection.classList.add('hidden');
+
+    if (section === 'input') els.inputSection.classList.remove('hidden');
+    if (section === 'processing') els.processingSection.classList.remove('hidden');
+    if (section === 'results') els.resultsSection.classList.remove('hidden');
+    if (section === 'error') els.errorSection.classList.remove('hidden');
+}
+
+function updateStep(step, status) {
+    const stepEl = document.getElementById(`step-${step}`);
+    if (!stepEl) return;
+
+    const checkIcon = stepEl.querySelector('svg');
+    const numberSpan = stepEl.querySelector('.step-number');
+
+    if (status === 'active') {
+        stepEl.classList.remove('text-slate-500', 'text-green-500');
+        stepEl.classList.add('text-violet-400');
+    } else if (status === 'completed') {
+        stepEl.classList.remove('text-slate-500', 'text-violet-400');
+        stepEl.classList.add('text-green-500');
+        if (checkIcon) checkIcon.classList.remove('hidden');
+        if (numberSpan) numberSpan.classList.add('hidden');
+    } else {
+        stepEl.classList.remove('text-violet-400', 'text-green-500');
+        stepEl.classList.add('text-slate-500');
+        if (checkIcon) checkIcon.classList.add('hidden');
+        if (numberSpan) numberSpan.classList.remove('hidden');
+    }
+}
+
+function resetForm() {
+    currentJobId = null;
+    if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+    }
+    els.urlInput.value = '';
+    els.btnProcess.disabled = false;
+    els.btnProcess.innerHTML = `
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+        </svg>
+        Найти клипы
+    `;
+    updateStep('download', 'pending');
+    updateStep('transcribe', 'pending');
+    updateStep('detect', 'pending');
+    showSection('input');
+}
+
+function renderClips(clips) {
+    els.clipsCount.textContent = `(${clips.length})`;
+
+    els.clipsList.innerHTML = clips.map((clip, index) => `
+        <div class="p-4 hover:bg-slate-700/30 transition-colors">
+            <div class="flex items-start gap-4">
+                <div class="w-10 h-10 bg-violet-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <span class="text-violet-400 font-semibold">${index + 1}</span>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-3 mb-2">
+                        <span class="text-xs text-slate-500 font-mono">
+                            ${formatDuration(clip.start)} → ${formatDuration(clip.end)}
+                        </span>
+                        <span class="text-xs text-slate-500">${clip.duration.toFixed(1)}с</span>
+                        <span class="px-2 py-0.5 bg-violet-500/20 text-violet-400 text-xs rounded-full">
+                            ${(clip.score * 100).toFixed(0)}% релевантность
+                        </span>
+                    </div>
+                    <p class="text-white text-sm line-clamp-2">${clip.text}</p>
+                    ${clip.hook_phrase ? `
+                        <p class="text-violet-400 text-xs mt-1">
+                            <span class="text-slate-500">Hook:</span> ${clip.hook_phrase}
+                        </p>
+                    ` : ''}
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function startProcessing() {
+    const url = els.urlInput.value.trim();
+    if (!url) {
+        alert('Введите ссылку на YouTube видео');
+        return;
+    }
+
+    els.btnProcess.disabled = true;
+    els.btnProcess.innerHTML = `
+        <div class="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+        Обработка...
+    `;
+
+    try {
+        const response = await fetch('/api/youtube/process', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                url: url,
+                max_clips: parseInt(els.maxClips.value),
+                min_duration: parseFloat(els.minDuration.value),
+                max_duration: parseFloat(els.maxDuration.value),
+            }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.detail?.error || data.detail?.message || 'Ошибка запроса');
+        }
+
+        currentJobId = data.job_id;
+        showSection('processing');
+
+        // Start polling
+        pollInterval = setInterval(pollJobStatus, 2000);
+        pollJobStatus();
+
+    } catch (error) {
+        console.error('Error:', error);
+        els.errorMessage.textContent = error.message;
+        showSection('error');
+        els.btnProcess.disabled = false;
+        els.btnProcess.innerHTML = `
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+            Найти клипы
+        `;
+    }
+}
+
+async function pollJobStatus() {
+    if (!currentJobId) return;
+
+    try {
+        const response = await fetch(`/api/youtube/jobs/${currentJobId}`);
+        const data = await response.json();
+
+        // Update status message
+        els.statusMessage.textContent = data.message || data.status;
+
+        // Update steps based on status
+        if (data.status === 'downloading') {
+            updateStep('download', 'active');
+        } else if (data.status === 'transcribing') {
+            updateStep('download', 'completed');
+            updateStep('transcribe', 'active');
+        } else if (data.status === 'detecting') {
+            updateStep('download', 'completed');
+            updateStep('transcribe', 'completed');
+            updateStep('detect', 'active');
+        } else if (data.status === 'completed') {
+            updateStep('download', 'completed');
+            updateStep('transcribe', 'completed');
+            updateStep('detect', 'completed');
+
+            clearInterval(pollInterval);
+            pollInterval = null;
+
+            // Show results
+            els.videoTitle.textContent = data.title || 'Без названия';
+            els.videoChannel.textContent = data.channel || 'Неизвестный канал';
+            els.videoDuration.textContent = data.duration ? formatDuration(data.duration) : '0:00';
+            els.videoLanguage.textContent = `Язык: ${data.language || 'auto'}`;
+            els.btnOpenEditor.href = data.editor_url || '#';
+
+            renderClips(data.clips || []);
+
+            setTimeout(() => showSection('results'), 500);
+
+        } else if (data.status === 'failed') {
+            clearInterval(pollInterval);
+            pollInterval = null;
+
+            els.errorMessage.textContent = data.error || 'Неизвестная ошибка';
+            showSection('error');
+        }
+
+    } catch (error) {
+        console.error('Poll error:', error);
+    }
+}
+
+// =============================================================================
+// Event Listeners
+// =============================================================================
+
+els.btnProcess.addEventListener('click', startProcessing);
+
+els.urlInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+        startProcessing();
+    }
+});
+
+// Handle paste
+els.urlInput.addEventListener('paste', () => {
+    setTimeout(() => {
+        if (els.urlInput.value.includes('youtube.com') || els.urlInput.value.includes('youtu.be')) {
+            // Auto-start after paste
+            // startProcessing();
+        }
+    }, 100);
+});
+</script>
+{% endblock %}

@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+
+{% block title %}Создать видео{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Header -->
+    <div class="mb-8">
+        <a href="/app" class="inline-flex items-center gap-2 text-slate-400 hover:text-white transition-colors mb-4">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+            </svg>
+            Назад
+        </a>
+        <h1 class="text-3xl font-bold text-white mb-2">Создание видео</h1>
+        <p class="text-slate-400">Заполните форму для генерации видео с озвучкой</p>
+    </div>
+
+    <!-- Balance Info -->
+    <div class="gradient-card p-4 rounded-xl border border-slate-800 mb-8 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 bg-violet-500/20 rounded-lg flex items-center justify-center">
+                <svg class="w-5 h-5 text-violet-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.736 6.979C9.208 6.193 9.696 6 10 6c.304 0 .792.193 1.264.979a1 1 0 001.715-1.029C12.279 4.784 11.232 4 10 4s-2.279.784-2.979 1.95c-.285.475-.507 1-.67 1.55H6a1 1 0 000 2h.013a9.358 9.358 0 000 1H6a1 1 0 100 2h.351c.163.55.385 1.075.67 1.55C7.721 15.216 8.768 16 10 16s2.279-.784 2.979-1.95a1 1 0 10-1.715-1.029c-.472.786-.96.979-1.264.979-.304 0-.792-.193-1.264-.979a5.38 5.38 0 01-.491-.921H10a1 1 0 100-2H8.017a7.36 7.36 0 010-1H10a1 1 0 100-2H8.245c.128-.346.289-.667.491-.921z"/>
+                </svg>
+            </div>
+            <div>
+                <p class="text-white font-semibold">{{ credits }} кредитов</p>
+                <p class="text-slate-500 text-sm">Создание видео: 1 кредит</p>
+            </div>
+        </div>
+        {% if credits < 1 %}
+        <span class="px-3 py-1 rounded-full text-xs font-semibold bg-red-500/20 text-red-400 border border-red-500/30">
+            Недостаточно кредитов
+        </span>
+        {% endif %}
+    </div>
+
+    <!-- Form -->
+    <form id="createForm" class="space-y-6">
+        <!-- Script Text -->
+        <div class="gradient-card p-6 rounded-2xl border border-slate-800">
+            <label class="block text-white font-semibold mb-3">
+                Текст сценария
+                <span class="text-red-400">*</span>
+            </label>
+            <textarea
+                name="script_text"
+                id="script_text"
+                class="form-input w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-violet-500"
+                placeholder="Введите текст для озвучки..."
+                rows="6"
+                required
+            ></textarea>
+            <p class="text-slate-500 text-sm mt-2">Минимум 10 символов. Этот текст будет озвучен AI.</p>
+        </div>
+
+        <!-- Audio Settings -->
+        <div class="gradient-card p-6 rounded-2xl border border-slate-800">
+            <h3 class="text-white font-semibold mb-4">Настройки аудио</h3>
+            <div class="grid md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-slate-400 text-sm mb-2">Голос</label>
+                    <select name="voice" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-violet-500">
+                        <option value="alloy">Alloy (нейтральный)</option>
+                        <option value="echo">Echo (мужской)</option>
+                        <option value="fable">Fable (британский)</option>
+                        <option value="onyx">Onyx (низкий мужской)</option>
+                        <option value="nova">Nova (женский)</option>
+                        <option value="shimmer">Shimmer (женский мягкий)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-slate-400 text-sm mb-2">Фоновая музыка</label>
+                    <select name="background_music" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-violet-500">
+                        <option value="">Без музыки</option>
+                        <option value="ambient">Ambient</option>
+                        <option value="upbeat">Upbeat</option>
+                        <option value="cinematic">Cinematic</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Video Settings -->
+        <div class="gradient-card p-6 rounded-2xl border border-slate-800">
+            <h3 class="text-white font-semibold mb-4">Настройки видео</h3>
+            <div class="grid md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-slate-400 text-sm mb-2">Разрешение</label>
+                    <select name="resolution" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-violet-500">
+                        <option value="1080x1920">1080x1920 (9:16 вертикальное)</option>
+                        <option value="1920x1080">1920x1080 (16:9 горизонтальное)</option>
+                        <option value="1080x1080">1080x1080 (1:1 квадрат)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-slate-400 text-sm mb-2">FPS</label>
+                    <select name="fps" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-violet-500">
+                        <option value="30">30 FPS</option>
+                        <option value="60">60 FPS</option>
+                        <option value="24">24 FPS (кино)</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Subtitle Settings -->
+        <div class="gradient-card p-6 rounded-2xl border border-slate-800">
+            <h3 class="text-white font-semibold mb-4">Субтитры</h3>
+            <div class="grid md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-slate-400 text-sm mb-2">Шрифт</label>
+                    <select name="subtitle_font" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-violet-500">
+                        <option value="Arial">Arial</option>
+                        <option value="Roboto">Roboto</option>
+                        <option value="Montserrat">Montserrat</option>
+                        <option value="OpenSans">Open Sans</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-slate-400 text-sm mb-2">Размер шрифта</label>
+                    <select name="subtitle_size" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-violet-500">
+                        <option value="small">Маленький</option>
+                        <option value="medium" selected>Средний</option>
+                        <option value="large">Большой</option>
+                    </select>
+                </div>
+            </div>
+            <div class="mt-4">
+                <label class="flex items-center gap-3 cursor-pointer">
+                    <input type="checkbox" name="highlight_words" checked class="w-5 h-5 rounded bg-slate-800 border-slate-600 text-violet-500 focus:ring-violet-500">
+                    <span class="text-white">Подсветка слов при произнесении</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- Submit -->
+        <div class="flex items-center justify-between">
+            <p class="text-slate-500 text-sm">
+                <span class="text-violet-400">*</span> Обязательные поля
+            </p>
+            <button
+                type="submit"
+                id="submitBtn"
+                {% if credits < 1 %}disabled{% endif %}
+                class="px-8 py-4 bg-gradient-to-r from-violet-600 to-violet-500 hover:from-violet-500 hover:to-violet-400 disabled:from-slate-600 disabled:to-slate-600 disabled:cursor-not-allowed text-white font-semibold rounded-xl text-lg transition-all btn-glow flex items-center gap-2"
+            >
+                <span id="btnText">Создать видео</span>
+                <svg id="btnSpinner" class="hidden w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            </button>
+        </div>
+    </form>
+
+    <!-- Error Alert -->
+    <div id="errorAlert" class="hidden alert-error p-4 rounded-xl mt-6">
+        <div class="flex items-center gap-3">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <span id="errorText"></span>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('createForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const btn = document.getElementById('submitBtn');
+    const btnText = document.getElementById('btnText');
+    const btnSpinner = document.getElementById('btnSpinner');
+    const errorAlert = document.getElementById('errorAlert');
+    const errorText = document.getElementById('errorText');
+
+    // Hide error
+    errorAlert.classList.add('hidden');
+
+    // Show loading
+    btn.disabled = true;
+    btnText.textContent = 'Создание...';
+    btnSpinner.classList.remove('hidden');
+
+    try {
+        const formData = new FormData(e.target);
+        const resolution = formData.get('resolution').split('x');
+
+        const payload = {
+            script_text: formData.get('script_text'),
+            voice: formData.get('voice'),
+            background_music: formData.get('background_music') || null,
+            resolution: {
+                width: parseInt(resolution[0]),
+                height: parseInt(resolution[1])
+            },
+            fps: parseInt(formData.get('fps')),
+            subtitle_font: formData.get('subtitle_font'),
+            subtitle_size: formData.get('subtitle_size'),
+            highlight_words: formData.get('highlight_words') === 'on'
+        };
+
+        // Generate unique idempotency key
+        const idempotencyKey = 'create_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+        const response = await fetch('/app/create', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Idempotency-Key': idempotencyKey
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            // Extract error message from various response formats
+            let errorMsg = 'Ошибка создания видео';
+            let errorCode = '';
+
+            if (data.detail) {
+                if (typeof data.detail === 'object') {
+                    errorMsg = data.detail.message || JSON.stringify(data.detail);
+                    errorCode = data.detail.code || '';
+                } else {
+                    errorMsg = data.detail;
+                }
+            } else if (data.message) {
+                errorMsg = data.message;
+            }
+
+            if (errorCode) {
+                errorMsg = `[${errorCode}] ${errorMsg}`;
+            }
+
+            throw new Error(errorMsg);
+        }
+
+        // Redirect to job page
+        window.location.href = '/app/jobs/' + data.job_id;
+
+    } catch (err) {
+        errorText.textContent = err.message;
+        errorAlert.classList.remove('hidden');
+
+        // Reset button
+        btn.disabled = false;
+        btnText.textContent = 'Создать видео';
+        btnSpinner.classList.add('hidden');
+    }
+});
+</script>
+{% endblock %}

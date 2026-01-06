@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block title %}Панель управления{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Header -->
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-white mb-2">Добро пожаловать!</h1>
+        <p class="text-slate-400">Ваш ID: <span class="mono text-violet-400">{{ user_id[:16] }}...</span></p>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="grid md:grid-cols-3 gap-6 mb-8">
+        <!-- Credits -->
+        <div class="gradient-card p-6 rounded-2xl border border-slate-800">
+            <div class="flex items-center justify-between mb-4">
+                <div class="w-12 h-12 bg-violet-500/20 rounded-xl flex items-center justify-center">
+                    <svg class="w-6 h-6 text-violet-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.736 6.979C9.208 6.193 9.696 6 10 6c.304 0 .792.193 1.264.979a1 1 0 001.715-1.029C12.279 4.784 11.232 4 10 4s-2.279.784-2.979 1.95c-.285.475-.507 1-.67 1.55H6a1 1 0 000 2h.013a9.358 9.358 0 000 1H6a1 1 0 100 2h.351c.163.55.385 1.075.67 1.55C7.721 15.216 8.768 16 10 16s2.279-.784 2.979-1.95a1 1 0 10-1.715-1.029c-.472.786-.96.979-1.264.979-.304 0-.792-.193-1.264-.979a5.38 5.38 0 01-.491-.921H10a1 1 0 100-2H8.017a7.36 7.36 0 010-1H10a1 1 0 100-2H8.245c.128-.346.289-.667.491-.921z"/>
+                    </svg>
+                </div>
+                <span class="text-sm text-slate-500">Баланс</span>
+            </div>
+            <div class="text-3xl font-bold text-white">{{ credits }}</div>
+            <p class="text-slate-400 text-sm mt-1">кредитов</p>
+        </div>
+
+        <!-- Total Jobs -->
+        <div class="gradient-card p-6 rounded-2xl border border-slate-800">
+            <div class="flex items-center justify-between mb-4">
+                <div class="w-12 h-12 bg-cyan-500/20 rounded-xl flex items-center justify-center">
+                    <svg class="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                    </svg>
+                </div>
+                <span class="text-sm text-slate-500">Всего</span>
+            </div>
+            <div class="text-3xl font-bold text-white">{{ total_jobs }}</div>
+            <p class="text-slate-400 text-sm mt-1">видео создано</p>
+        </div>
+
+        <!-- Completed Jobs -->
+        <div class="gradient-card p-6 rounded-2xl border border-slate-800">
+            <div class="flex items-center justify-between mb-4">
+                <div class="w-12 h-12 bg-green-500/20 rounded-xl flex items-center justify-center">
+                    <svg class="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                    </svg>
+                </div>
+                <span class="text-sm text-slate-500">Готово</span>
+            </div>
+            <div class="text-3xl font-bold text-white">{{ completed_jobs }}</div>
+            <p class="text-slate-400 text-sm mt-1">видео завершено</p>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="grid md:grid-cols-2 gap-6 mb-8">
+        <a href="/app/create" class="gradient-card p-6 rounded-2xl border border-slate-800 card-hover group">
+            <div class="flex items-center gap-4">
+                <div class="w-14 h-14 bg-gradient-to-br from-violet-500 to-cyan-500 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="text-xl font-bold text-white mb-1">Создать видео</h3>
+                    <p class="text-slate-400">Начните создание нового видео</p>
+                </div>
+            </div>
+        </a>
+
+        <a href="/app/jobs" class="gradient-card p-6 rounded-2xl border border-slate-800 card-hover group">
+            <div class="flex items-center gap-4">
+                <div class="w-14 h-14 bg-gradient-to-br from-slate-600 to-slate-700 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path>
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="text-xl font-bold text-white mb-1">Мои видео</h3>
+                    <p class="text-slate-400">Просмотр всех ваших видео</p>
+                </div>
+            </div>
+        </a>
+    </div>
+
+    <!-- Recent Jobs -->
+    {% if recent_jobs %}
+    <div class="gradient-card rounded-2xl border border-slate-800 overflow-hidden">
+        <div class="p-6 border-b border-slate-800">
+            <h2 class="text-xl font-bold text-white">Последние видео</h2>
+        </div>
+        <div class="divide-y divide-slate-800">
+            {% for job in recent_jobs %}
+            <a href="/app/jobs/{{ job.job_id }}" class="block p-6 hover:bg-slate-800/50 transition-colors">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-4">
+                        <div class="w-10 h-10 bg-slate-700 rounded-lg flex items-center justify-center">
+                            <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="text-white font-medium mono text-sm">{{ job.job_id[:12] }}...</p>
+                            <p class="text-slate-500 text-sm">{{ job.created_at }}</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        {% if job.status == 'COMPLETED' %}
+                        <span class="px-3 py-1 rounded-full text-xs font-semibold status-completed">Готово</span>
+                        {% elif job.status == 'RUNNING' %}
+                        <span class="px-3 py-1 rounded-full text-xs font-semibold status-running">В процессе</span>
+                        {% elif job.status == 'PENDING' %}
+                        <span class="px-3 py-1 rounded-full text-xs font-semibold status-pending">В очереди</span>
+                        {% elif job.status == 'FAILED' %}
+                        <span class="px-3 py-1 rounded-full text-xs font-semibold status-failed">Ошибка</span>
+                        {% endif %}
+                        <svg class="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                        </svg>
+                    </div>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% else %}
+    <div class="gradient-card p-12 rounded-2xl border border-slate-800 text-center">
+        <div class="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg class="w-8 h-8 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+            </svg>
+        </div>
+        <h3 class="text-xl font-bold text-white mb-2">Пока нет видео</h3>
+        <p class="text-slate-400 mb-6">Создайте своё первое видео прямо сейчас</p>
+        <a href="/app/create" class="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-violet-600 to-violet-500 hover:from-violet-500 hover:to-violet-400 text-white font-semibold rounded-xl transition-all btn-glow">
+            Создать видео
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"></path>
+            </svg>
+        </a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

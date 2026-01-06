@@ -1,0 +1,1461 @@
+{% extends "base.html" %}
+
+{% block title %}Редактор{% endblock %}
+
+{% block content %}
+<div id="editor-app" class="h-screen flex flex-col bg-slate-950">
+    <!-- Top Bar -->
+    <div class="h-14 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-4 flex-shrink-0">
+        <div class="flex items-center gap-4">
+            <a href="/app/jobs" class="text-slate-400 hover:text-white transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                </svg>
+            </a>
+            <div class="h-6 w-px bg-slate-700"></div>
+            <h1 class="text-white font-medium" id="project-title">
+                {% if batch_id %}Проект {{ batch_id[:8] }}{% elif clip_id %}Клип {{ clip_id[:8] }}{% else %}Редактор{% endif %}
+            </h1>
+            <span id="save-status" class="text-xs text-slate-500 hidden">Сохранено</span>
+        </div>
+        <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2 px-3 py-1.5 bg-slate-800 rounded-full">
+                <svg class="w-4 h-4 text-violet-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.736 6.979C9.208 6.193 9.696 6 10 6c.304 0 .792.193 1.264.979a1 1 0 001.715-1.029C12.279 4.784 11.232 4 10 4s-2.279.784-2.979 1.95c-.285.475-.507 1-.67 1.55H6a1 1 0 000 2h.013a9.358 9.358 0 000 1H6a1 1 0 100 2h.351c.163.55.385 1.075.67 1.55C7.721 15.216 8.768 16 10 16s2.279-.784 2.979-1.95a1 1 0 10-1.715-1.029c-.472.786-.96.979-1.264.979-.304 0-.792-.193-1.264-.979a5.38 5.38 0 01-.491-.921H10a1 1 0 100-2H8.017a7.36 7.36 0 010-1H10a1 1 0 100-2H8.245c.128-.346.289-.667.491-.921z"/>
+                </svg>
+                <span class="font-semibold text-white text-sm">{{ credits }}</span>
+            </div>
+            <button id="btn-download" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                </svg>
+                Скачать
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="flex-1 flex overflow-hidden">
+        <!-- Left Panel: Clips List -->
+        <div id="clips-panel" class="w-72 bg-slate-900 border-r border-slate-800 flex flex-col {% if mode == 'single' %}hidden{% endif %}">
+            <div class="p-4 border-b border-slate-800">
+                <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider">Клипы</h2>
+            </div>
+            <div id="clips-list" class="flex-1 overflow-y-auto p-3 space-y-2">
+                <div id="clips-loading" class="animate-pulse space-y-2">
+                    <div class="h-20 bg-slate-800 rounded-lg"></div>
+                    <div class="h-20 bg-slate-800 rounded-lg"></div>
+                    <div class="h-20 bg-slate-800 rounded-lg"></div>
+                </div>
+            </div>
+            <div class="p-3 border-t border-slate-800">
+                <button id="btn-render-all" class="w-full px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                    Перерендерить все
+                </button>
+            </div>
+        </div>
+
+        <!-- Center: Preview + Timeline + Editor -->
+        <div class="flex-1 flex flex-col">
+            <!-- Video Preview Area -->
+            <div class="flex-shrink-0 flex justify-center items-start p-6 bg-slate-950">
+                <div class="relative" style="max-height: 50vh;">
+                    <!-- Video Container (9:16 aspect ratio) -->
+                    <div id="video-container" class="relative bg-black rounded-xl overflow-hidden shadow-2xl" style="aspect-ratio: 9/16; height: 45vh;">
+                        <video id="video-player" class="w-full h-full object-contain" preload="metadata">
+                            <source src="" type="video/mp4">
+                        </video>
+                        <!-- Subtitle Overlay -->
+                        <div id="subtitle-overlay" class="absolute bottom-16 left-0 right-0 text-center px-4 hidden">
+                            <span class="inline-block px-4 py-2 bg-black/70 text-white text-xl font-bold rounded-lg"></span>
+                        </div>
+                        <!-- Video Placeholder -->
+                        <div id="no-video-placeholder" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-900">
+                            <svg class="w-16 h-16 text-slate-700 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                            </svg>
+                            <p class="text-slate-500 text-sm">Превью клипа</p>
+                        </div>
+                    </div>
+                    <!-- Playback Controls -->
+                    <div id="playback-controls" class="mt-4 flex items-center gap-4">
+                        <button id="btn-play" class="w-10 h-10 flex items-center justify-center bg-slate-800 hover:bg-slate-700 rounded-full transition-colors">
+                            <svg id="icon-play" class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M8 5v14l11-7z"/>
+                            </svg>
+                            <svg id="icon-pause" class="w-5 h-5 text-white hidden" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
+                            </svg>
+                        </button>
+                        <div class="flex-1 flex items-center gap-3">
+                            <span id="time-current" class="text-xs text-slate-400 font-mono w-12">0:00</span>
+                            <div id="progress-bar" class="flex-1 h-1.5 bg-slate-700 rounded-full cursor-pointer relative">
+                                <div id="progress-fill" class="h-full bg-violet-500 rounded-full" style="width: 0%;"></div>
+                                <div id="progress-handle" class="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-lg cursor-grab" style="left: 0%;"></div>
+                            </div>
+                            <span id="time-total" class="text-xs text-slate-400 font-mono w-12">0:00</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Subtitle Timeline -->
+            <div id="timeline-container" class="h-24 bg-slate-900 border-y border-slate-800 px-6 py-2 flex-shrink-0">
+                <div class="text-xs text-slate-500 mb-2 flex justify-between">
+                    <span>Таймлайн</span>
+                    <span id="timeline-duration">0:00</span>
+                </div>
+                <div id="subtitle-timeline" class="relative h-12 bg-slate-800 rounded-lg overflow-hidden">
+                    <div id="timeline-ruler" class="absolute inset-0 pointer-events-none"></div>
+                    <div id="timeline-blocks" class="absolute inset-0"></div>
+                    <div id="timeline-playhead" class="absolute top-0 bottom-0 w-0.5 bg-violet-500 z-10" style="left: 0%;"></div>
+                </div>
+            </div>
+
+            <!-- Subtitle Editor -->
+            <div class="flex-1 overflow-hidden flex">
+                <div class="flex-1 flex flex-col">
+                    <div class="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900">
+                        <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider">Субтитры</h2>
+                        <div class="flex items-center gap-2">
+                            <button id="btn-undo" class="p-2 hover:bg-slate-800 rounded text-slate-400 hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed" disabled title="Отменить (Ctrl+Z)">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path>
+                                </svg>
+                            </button>
+                            <button id="btn-redo" class="p-2 hover:bg-slate-800 rounded text-slate-400 hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed" disabled title="Повторить (Ctrl+Shift+Z)">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 10h-10a8 8 0 00-8 8v2m18-10l-6 6m6-6l-6-6"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="subtitle-editor" class="flex-1 overflow-y-auto p-4 space-y-1 bg-slate-950">
+                        <div id="subtitles-loading" class="text-slate-500 text-sm text-center py-8">
+                            <div class="spinner mx-auto mb-4"></div>
+                            Загрузка субтитров...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Panel: Style & Actions -->
+                <div class="w-64 bg-slate-900 border-l border-slate-800 flex flex-col overflow-y-auto">
+                    <div class="p-4 border-b border-slate-800">
+                        <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider">Настройки видео</h2>
+                    </div>
+                    <div class="p-4 space-y-6">
+                        <!-- Video Format -->
+                        <div>
+                            <label class="block text-xs text-slate-500 mb-2">Формат видео</label>
+                            <div id="video-formats" class="grid grid-cols-3 gap-2">
+                                <button class="format-btn px-2 py-3 bg-slate-800 hover:bg-slate-700 text-white text-xs font-medium rounded-lg transition-colors border-2 border-transparent data-[active=true]:border-violet-500 flex flex-col items-center gap-1" data-format="9:16" data-width="1080" data-height="1920">
+                                    <div class="w-4 h-6 border-2 border-current rounded-sm"></div>
+                                    <span>9:16</span>
+                                </button>
+                                <button class="format-btn px-2 py-3 bg-slate-800 hover:bg-slate-700 text-white text-xs font-medium rounded-lg transition-colors border-2 border-transparent data-[active=true]:border-violet-500 flex flex-col items-center gap-1" data-format="1:1" data-width="1080" data-height="1080">
+                                    <div class="w-5 h-5 border-2 border-current rounded-sm"></div>
+                                    <span>1:1</span>
+                                </button>
+                                <button class="format-btn px-2 py-3 bg-slate-800 hover:bg-slate-700 text-white text-xs font-medium rounded-lg transition-colors border-2 border-transparent data-[active=true]:border-violet-500 flex flex-col items-center gap-1" data-format="16:9" data-width="1920" data-height="1080">
+                                    <div class="w-6 h-4 border-2 border-current rounded-sm"></div>
+                                    <span>16:9</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Style Preset -->
+                        <div>
+                            <label class="block text-xs text-slate-500 mb-2">Пресет</label>
+                            <div id="style-presets" class="grid grid-cols-3 gap-2">
+                                <button class="style-preset px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-medium rounded-lg transition-colors border-2 border-transparent data-[active=true]:border-violet-500" data-style="clean">
+                                    Чистый
+                                </button>
+                                <button class="style-preset px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-medium rounded-lg transition-colors border-2 border-transparent data-[active=true]:border-violet-500" data-style="bold">
+                                    Жирный
+                                </button>
+                                <button class="style-preset px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-medium rounded-lg transition-colors border-2 border-transparent data-[active=true]:border-violet-500" data-style="highlight">
+                                    Акцент
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Font Size -->
+                        <div>
+                            <label class="block text-xs text-slate-500 mb-2">Размер шрифта</label>
+                            <div id="font-sizes" class="grid grid-cols-3 gap-2">
+                                <button class="font-size-btn px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-medium rounded-lg transition-colors border-2 border-transparent data-[active=true]:border-violet-500" data-size="S">
+                                    S
+                                </button>
+                                <button class="font-size-btn px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-medium rounded-lg transition-colors border-2 border-transparent data-[active=true]:border-violet-500" data-size="M">
+                                    M
+                                </button>
+                                <button class="font-size-btn px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-medium rounded-lg transition-colors border-2 border-transparent data-[active=true]:border-violet-500" data-size="L">
+                                    L
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Position -->
+                        <div>
+                            <label class="block text-xs text-slate-500 mb-2">Позиция</label>
+                            <div id="positions" class="grid grid-cols-2 gap-2">
+                                <button class="position-btn px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-medium rounded-lg transition-colors border-2 border-transparent data-[active=true]:border-violet-500" data-position="center">
+                                    Центр
+                                </button>
+                                <button class="position-btn px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-medium rounded-lg transition-colors border-2 border-transparent data-[active=true]:border-violet-500" data-position="lower">
+                                    Низ
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-auto p-4 border-t border-slate-800 space-y-3">
+                        <button id="btn-render" class="w-full px-4 py-3 bg-gradient-to-r from-violet-600 to-violet-500 hover:from-violet-500 hover:to-violet-400 text-white font-medium rounded-lg transition-all btn-glow flex items-center justify-center gap-2">
+                            <svg id="render-icon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                            </svg>
+                            <span id="render-text">Перерендерить</span>
+                        </button>
+                        <p class="text-xs text-slate-500 text-center">Стоимость: 1 кредит</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
+
+    <!-- Confirm Dialog -->
+    <div id="confirm-dialog" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center">
+        <div class="bg-slate-900 rounded-xl p-6 max-w-md w-full mx-4 border border-slate-700">
+            <h3 id="confirm-title" class="text-lg font-semibold text-white mb-2">Подтверждение</h3>
+            <p id="confirm-message" class="text-slate-400 mb-6">Вы уверены?</p>
+            <div class="flex gap-3">
+                <button id="confirm-cancel" class="flex-1 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors">Отмена</button>
+                <button id="confirm-ok" class="flex-1 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition-colors">Подтвердить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+#editor-app {
+    overflow: hidden;
+}
+
+.subtitle-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    transition: background 0.15s;
+    cursor: pointer;
+}
+
+.subtitle-row:hover {
+    background: rgba(71, 85, 105, 0.3);
+}
+
+.subtitle-row.selected {
+    background: rgba(139, 92, 246, 0.2);
+    border-left: 3px solid #8b5cf6;
+}
+
+.subtitle-row.playing {
+    background: rgba(34, 197, 94, 0.15);
+}
+
+.subtitle-time {
+    font-family: 'SF Mono', Monaco, monospace;
+    font-size: 11px;
+    color: #64748b;
+    width: 100px;
+    flex-shrink: 0;
+}
+
+.subtitle-text {
+    flex: 1;
+    color: #e2e8f0;
+    font-size: 14px;
+    outline: none;
+    background: transparent;
+    border: none;
+    padding: 4px 0;
+}
+
+.subtitle-text:focus {
+    background: rgba(30, 41, 59, 0.8);
+    border-radius: 4px;
+    padding: 4px 8px;
+    margin: -4px -8px;
+}
+
+.subtitle-actions {
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.subtitle-row:hover .subtitle-actions {
+    opacity: 1;
+}
+
+.clip-card {
+    padding: 12px;
+    background: #1e293b;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+    border: 2px solid transparent;
+}
+
+.clip-card:hover {
+    background: #334155;
+}
+
+.clip-card.active {
+    border-color: #8b5cf6;
+    background: rgba(139, 92, 246, 0.1);
+}
+
+.timeline-block {
+    position: absolute;
+    top: 8px;
+    bottom: 8px;
+    background: rgba(139, 92, 246, 0.6);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.timeline-block:hover {
+    background: rgba(139, 92, 246, 0.8);
+}
+
+.timeline-block.selected {
+    background: #8b5cf6;
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.4);
+}
+
+.timeline-block .resize-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 8px;
+    cursor: ew-resize;
+}
+
+.timeline-block .resize-handle:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.timeline-block .resize-handle.left {
+    left: 0;
+    border-radius: 4px 0 0 4px;
+}
+
+.timeline-block .resize-handle.right {
+    right: 0;
+    border-radius: 0 4px 4px 0;
+}
+
+.toast {
+    padding: 12px 16px;
+    background: #1e293b;
+    border-radius: 8px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+    border-left: 3px solid #22c55e;
+    animation: slideIn 0.3s ease;
+}
+
+.toast.error {
+    border-left-color: #ef4444;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.spinner {
+    border: 3px solid rgba(139, 92, 246, 0.2);
+    border-top-color: #8b5cf6;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// =============================================================================
+// Editor State
+// =============================================================================
+
+const EditorState = {
+    mode: '{{ mode }}',
+    batchId: '{{ batch_id or "" }}',
+    clipId: '{{ clip_id or "" }}',
+
+    clips: [],
+    currentClipId: null,
+    currentClip: null,
+
+    subtitles: [],
+    selectedSubtitleId: null,
+    subtitlesDirty: false,
+
+    isPlaying: false,
+    currentTime: 0,
+    duration: 0,
+
+    // Style settings
+    stylePreset: 'clean',
+    fontSize: 'M',
+    position: 'center',
+
+    // Video format settings
+    videoFormat: '9:16',
+    videoWidth: 1080,
+    videoHeight: 1920,
+
+    renderStatus: 'idle',
+    renderTaskId: null,
+
+    history: [],
+    historyIndex: -1,
+    maxHistory: 50,
+
+    saveTimer: null,
+};
+
+// =============================================================================
+// DOM Elements
+// =============================================================================
+
+const els = {
+    clipsList: document.getElementById('clips-list'),
+    clipsLoading: document.getElementById('clips-loading'),
+    videoPlayer: document.getElementById('video-player'),
+    noVideoPlaceholder: document.getElementById('no-video-placeholder'),
+    subtitleOverlay: document.getElementById('subtitle-overlay'),
+    btnPlay: document.getElementById('btn-play'),
+    iconPlay: document.getElementById('icon-play'),
+    iconPause: document.getElementById('icon-pause'),
+    timeCurrent: document.getElementById('time-current'),
+    timeTotal: document.getElementById('time-total'),
+    progressBar: document.getElementById('progress-bar'),
+    progressFill: document.getElementById('progress-fill'),
+    progressHandle: document.getElementById('progress-handle'),
+    subtitleTimeline: document.getElementById('subtitle-timeline'),
+    timelineBlocks: document.getElementById('timeline-blocks'),
+    timelinePlayhead: document.getElementById('timeline-playhead'),
+    timelineDuration: document.getElementById('timeline-duration'),
+    subtitleEditor: document.getElementById('subtitle-editor'),
+    subtitlesLoading: document.getElementById('subtitles-loading'),
+    btnUndo: document.getElementById('btn-undo'),
+    btnRedo: document.getElementById('btn-redo'),
+    btnRender: document.getElementById('btn-render'),
+    renderText: document.getElementById('render-text'),
+    renderIcon: document.getElementById('render-icon'),
+    toastContainer: document.getElementById('toast-container'),
+    confirmDialog: document.getElementById('confirm-dialog'),
+    confirmTitle: document.getElementById('confirm-title'),
+    confirmMessage: document.getElementById('confirm-message'),
+    confirmOk: document.getElementById('confirm-ok'),
+    confirmCancel: document.getElementById('confirm-cancel'),
+    saveStatus: document.getElementById('save-status'),
+};
+
+// =============================================================================
+// API Functions
+// =============================================================================
+
+async function apiCall(url, options = {}) {
+    const response = await fetch(url, {
+        headers: {
+            'Content-Type': 'application/json',
+            ...options.headers,
+        },
+        ...options,
+    });
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Неизвестная ошибка' }));
+        throw new Error(error.detail?.message || error.detail || 'Ошибка запроса');
+    }
+
+    return response.json();
+}
+
+async function fetchClips(batchId) {
+    return apiCall(`/api/clips?batch_id=${batchId}`);
+}
+
+async function fetchClip(clipId) {
+    return apiCall(`/api/clips/${clipId}`);
+}
+
+async function saveSubtitles(clipId, subtitles) {
+    return apiCall(`/api/clips/${clipId}/subtitles`, {
+        method: 'POST',
+        body: JSON.stringify({ subtitles }),
+    });
+}
+
+async function saveStyle(clipId, stylePreset, fontSize, position) {
+    return apiCall(`/api/clips/${clipId}/style`, {
+        method: 'POST',
+        body: JSON.stringify({ style_preset: stylePreset, font_size: fontSize, position }),
+    });
+}
+
+async function requestRenderClip(clipId) {
+    // Try new Revideo API first, fallback to legacy
+    try {
+        return await apiCall(`/api/video/render-clip`, {
+            method: 'POST',
+            body: JSON.stringify({
+                clip_id: clipId,
+                template: 'shorts-vertical'
+            }),
+        });
+    } catch (e) {
+        // Fallback to legacy API
+        return apiCall(`/api/clips/${clipId}/render`, {
+            method: 'POST',
+        });
+    }
+}
+
+async function getTaskStatus(taskId) {
+    // Check if it's a video engine job
+    if (taskId.startsWith('clip_render_') || taskId.startsWith('video_') || taskId.startsWith('quick_')) {
+        return apiCall(`/api/video/jobs/${taskId}`);
+    }
+    // Legacy API
+    return apiCall(`/api/clips/tasks/${taskId}`);
+}
+
+// =============================================================================
+// UI Functions
+// =============================================================================
+
+function formatTime(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+function showToast(message, type = 'success') {
+    const toast = document.createElement('div');
+    toast.className = `toast ${type === 'error' ? 'error' : ''}`;
+    toast.innerHTML = `
+        <div class="flex items-center gap-3">
+            <svg class="w-5 h-5 ${type === 'error' ? 'text-red-400' : 'text-green-400'}" fill="currentColor" viewBox="0 0 20 20">
+                ${type === 'error'
+                    ? '<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>'
+                    : '<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>'
+                }
+            </svg>
+            <span class="text-white text-sm">${message}</span>
+        </div>
+    `;
+    els.toastContainer.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+}
+
+function showConfirm(title, message) {
+    return new Promise((resolve) => {
+        els.confirmTitle.textContent = title;
+        els.confirmMessage.textContent = message;
+        els.confirmDialog.classList.remove('hidden');
+        els.confirmDialog.classList.add('flex');
+
+        const handleOk = () => {
+            cleanup();
+            resolve(true);
+        };
+
+        const handleCancel = () => {
+            cleanup();
+            resolve(false);
+        };
+
+        const cleanup = () => {
+            els.confirmDialog.classList.add('hidden');
+            els.confirmDialog.classList.remove('flex');
+            els.confirmOk.removeEventListener('click', handleOk);
+            els.confirmCancel.removeEventListener('click', handleCancel);
+        };
+
+        els.confirmOk.addEventListener('click', handleOk);
+        els.confirmCancel.addEventListener('click', handleCancel);
+    });
+}
+
+// =============================================================================
+// Clips Panel
+// =============================================================================
+
+function renderClipsList() {
+    if (EditorState.mode === 'single') return;
+    if (els.clipsLoading) els.clipsLoading.style.display = 'none';
+
+    const statusLabels = {
+        'ready': 'Готов',
+        'rendering': 'Рендеринг',
+        'pending': 'В очереди',
+        'failed': 'Ошибка'
+    };
+
+    els.clipsList.innerHTML = EditorState.clips.map(clip => `
+        <div class="clip-card ${clip.clip_id === EditorState.currentClipId ? 'active' : ''}"
+             data-clip-id="${clip.clip_id}">
+            <div class="flex items-start gap-3">
+                <div class="w-16 h-20 bg-slate-800 rounded-lg flex items-center justify-center flex-shrink-0">
+                    ${clip.thumbnail_url
+                        ? `<img src="${clip.thumbnail_url}" class="w-full h-full object-cover rounded-lg">`
+                        : `<svg class="w-6 h-6 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                           </svg>`
+                    }
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="text-sm font-medium text-white">Клип ${clip.clip_index + 1}</div>
+                    <div class="text-xs text-slate-500 mt-1">${formatTime(clip.duration)}</div>
+                    <div class="text-xs text-slate-500">${clip.subtitle_count} субтитров</div>
+                    <div class="mt-2">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
+                            ${clip.status === 'ready' ? 'bg-green-900/50 text-green-400' :
+                              clip.status === 'rendering' ? 'bg-blue-900/50 text-blue-400' :
+                              'bg-red-900/50 text-red-400'}">
+                            ${statusLabels[clip.status] || clip.status}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `).join('');
+
+    els.clipsList.querySelectorAll('.clip-card').forEach(card => {
+        card.addEventListener('click', () => {
+            const clipId = card.dataset.clipId;
+            if (clipId !== EditorState.currentClipId) {
+                loadClip(clipId);
+            }
+        });
+    });
+}
+
+// =============================================================================
+// Video Player
+// =============================================================================
+
+function updateVideoPlayer() {
+    const clip = EditorState.currentClip;
+
+    // Determine video URL - prefer video_filename (Revideo) over video_url (legacy)
+    let videoUrl = null;
+    if (clip && clip.video_filename) {
+        // Revideo rendered video - serve from /api/video/preview/
+        videoUrl = `/api/video/preview/${encodeURIComponent(clip.video_filename)}`;
+    } else if (clip && clip.video_url) {
+        // Legacy video URL
+        videoUrl = clip.video_url;
+    }
+
+    if (!videoUrl) {
+        // No video available - show placeholder
+        els.noVideoPlaceholder.classList.remove('hidden');
+        els.videoPlayer.classList.add('hidden');
+        // Don't set src = '' as it triggers error events
+        els.videoPlayer.removeAttribute('src');
+        return;
+    }
+
+    // Show video player, hide placeholder
+    els.noVideoPlaceholder.classList.add('hidden');
+    els.videoPlayer.classList.remove('hidden');
+
+    // Add cache-busting parameter for fresh video after re-render
+    const cacheBuster = `v=${Date.now()}`;
+    const finalUrl = videoUrl + (videoUrl.includes('?') ? '&' : '?') + cacheBuster;
+
+    // Only reload if URL changed (ignoring cache buster)
+    const currentSrcBase = els.videoPlayer.src.split('?')[0];
+    const newSrcBase = new URL(finalUrl, window.location.origin).href.split('?')[0];
+
+    if (currentSrcBase !== newSrcBase || els.videoPlayer.readyState === 0) {
+        els.videoPlayer.src = finalUrl;
+        els.videoPlayer.load();
+    } else {
+        // Same video, just refresh with cache buster
+        els.videoPlayer.src = finalUrl;
+    }
+}
+
+function updatePlaybackUI() {
+    const progress = EditorState.duration > 0 ? (EditorState.currentTime / EditorState.duration) * 100 : 0;
+    els.progressFill.style.width = `${progress}%`;
+    els.progressHandle.style.left = `${progress}%`;
+    els.timelinePlayhead.style.left = `${progress}%`;
+    els.timeCurrent.textContent = formatTime(EditorState.currentTime);
+    els.timeTotal.textContent = formatTime(EditorState.duration);
+    els.timelineDuration.textContent = formatTime(EditorState.duration);
+
+    els.iconPlay.classList.toggle('hidden', EditorState.isPlaying);
+    els.iconPause.classList.toggle('hidden', !EditorState.isPlaying);
+
+    updateSubtitleOverlay();
+}
+
+function updateSubtitleOverlay() {
+    const currentSub = EditorState.subtitles.find(s =>
+        EditorState.currentTime >= s.start && EditorState.currentTime <= s.end
+    );
+
+    const overlay = els.subtitleOverlay.querySelector('span');
+    if (currentSub) {
+        overlay.textContent = currentSub.text;
+        els.subtitleOverlay.classList.remove('hidden');
+    } else {
+        els.subtitleOverlay.classList.add('hidden');
+    }
+
+    document.querySelectorAll('.subtitle-row').forEach(row => {
+        row.classList.toggle('playing', row.dataset.id === currentSub?.id);
+    });
+}
+
+// =============================================================================
+// Timeline
+// =============================================================================
+
+function renderTimeline() {
+    const duration = EditorState.duration || 1;
+
+    els.timelineBlocks.innerHTML = EditorState.subtitles.map(sub => {
+        const left = (sub.start / duration) * 100;
+        const width = ((sub.end - sub.start) / duration) * 100;
+        return `
+            <div class="timeline-block ${sub.id === EditorState.selectedSubtitleId ? 'selected' : ''}"
+                 data-id="${sub.id}"
+                 style="left: ${left}%; width: ${width}%;">
+                <div class="resize-handle left" data-edge="start"></div>
+                <div class="resize-handle right" data-edge="end"></div>
+            </div>
+        `;
+    }).join('');
+
+    els.timelineBlocks.querySelectorAll('.timeline-block').forEach(block => {
+        block.addEventListener('click', (e) => {
+            if (!e.target.classList.contains('resize-handle')) {
+                selectSubtitle(block.dataset.id);
+            }
+        });
+
+        block.querySelectorAll('.resize-handle').forEach(handle => {
+            handle.addEventListener('mousedown', (e) => {
+                e.stopPropagation();
+                startTimelineResize(block.dataset.id, handle.dataset.edge, e);
+            });
+        });
+    });
+}
+
+function startTimelineResize(subId, edge, startEvent) {
+    const sub = EditorState.subtitles.find(s => s.id === subId);
+    if (!sub) return;
+
+    const timeline = els.subtitleTimeline;
+    const timelineRect = timeline.getBoundingClientRect();
+
+    const onMouseMove = (e) => {
+        const x = e.clientX - timelineRect.left;
+        const percent = Math.max(0, Math.min(1, x / timelineRect.width));
+        const newTime = percent * EditorState.duration;
+
+        if (edge === 'start') {
+            sub.start = Math.min(newTime, sub.end - 0.1);
+        } else {
+            sub.end = Math.max(newTime, sub.start + 0.1);
+        }
+
+        renderTimeline();
+        markDirty();
+    };
+
+    const onMouseUp = () => {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+        pushHistory();
+        triggerAutosave();
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+}
+
+// =============================================================================
+// Subtitle Editor
+// =============================================================================
+
+function renderSubtitleEditor() {
+    if (els.subtitlesLoading) els.subtitlesLoading.style.display = 'none';
+
+    if (!EditorState.subtitles.length) {
+        els.subtitleEditor.innerHTML = `
+            <div class="text-slate-500 text-sm text-center py-8">
+                Нет субтитров для редактирования
+            </div>
+        `;
+        return;
+    }
+
+    els.subtitleEditor.innerHTML = EditorState.subtitles.map((sub, index) => `
+        <div class="subtitle-row ${sub.id === EditorState.selectedSubtitleId ? 'selected' : ''}"
+             data-id="${sub.id}"
+             data-index="${index}">
+            <div class="subtitle-time">
+                ${formatTime(sub.start)} → ${formatTime(sub.end)}
+            </div>
+            <input type="text"
+                   class="subtitle-text"
+                   value="${escapeHtml(sub.text)}"
+                   data-id="${sub.id}">
+            <div class="subtitle-actions flex gap-1">
+                <button class="p-1.5 hover:bg-slate-700 rounded text-slate-400 hover:text-white"
+                        title="Разделить" data-action="split" data-id="${sub.id}">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m0 0l-4-4m4 4l4-4"></path>
+                    </svg>
+                </button>
+                <button class="p-1.5 hover:bg-slate-700 rounded text-slate-400 hover:text-red-400"
+                        title="Удалить" data-action="delete" data-id="${sub.id}">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    `).join('');
+
+    els.subtitleEditor.querySelectorAll('.subtitle-row').forEach(row => {
+        row.addEventListener('click', (e) => {
+            if (!e.target.matches('input, button, svg, path')) {
+                selectSubtitle(row.dataset.id);
+            }
+        });
+    });
+
+    els.subtitleEditor.querySelectorAll('.subtitle-text').forEach(input => {
+        input.addEventListener('focus', () => {
+            selectSubtitle(input.dataset.id);
+        });
+
+        input.addEventListener('input', () => {
+            const sub = EditorState.subtitles.find(s => s.id === input.dataset.id);
+            if (sub) {
+                sub.text = input.value;
+                markDirty();
+                triggerAutosave();
+            }
+        });
+
+        input.addEventListener('blur', () => {
+            pushHistory();
+        });
+
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                input.blur();
+            } else if (e.key === 'Escape') {
+                input.blur();
+            }
+        });
+    });
+
+    els.subtitleEditor.querySelectorAll('[data-action]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const action = btn.dataset.action;
+            const id = btn.dataset.id;
+
+            if (action === 'split') {
+                splitSubtitle(id);
+            } else if (action === 'delete') {
+                deleteSubtitle(id);
+            }
+        });
+    });
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function selectSubtitle(id) {
+    EditorState.selectedSubtitleId = id;
+    renderSubtitleEditor();
+    renderTimeline();
+
+    const sub = EditorState.subtitles.find(s => s.id === id);
+    if (sub && els.videoPlayer.readyState >= 1) {
+        els.videoPlayer.currentTime = sub.start;
+        EditorState.currentTime = sub.start;
+        updatePlaybackUI();
+    }
+}
+
+function splitSubtitle(id) {
+    const index = EditorState.subtitles.findIndex(s => s.id === id);
+    if (index === -1) return;
+
+    const sub = EditorState.subtitles[index];
+    const midTime = (sub.start + sub.end) / 2;
+    const words = sub.text.split(' ');
+    const midWord = Math.ceil(words.length / 2);
+
+    const newSub = {
+        id: `sub_${Date.now()}`,
+        start: midTime,
+        end: sub.end,
+        text: words.slice(midWord).join(' ') || '...',
+    };
+
+    sub.end = midTime;
+    sub.text = words.slice(0, midWord).join(' ') || '...';
+
+    EditorState.subtitles.splice(index + 1, 0, newSub);
+
+    pushHistory();
+    markDirty();
+    triggerAutosave();
+    renderSubtitleEditor();
+    renderTimeline();
+}
+
+function deleteSubtitle(id) {
+    const index = EditorState.subtitles.findIndex(s => s.id === id);
+    if (index === -1) return;
+
+    EditorState.subtitles.splice(index, 1);
+
+    if (EditorState.selectedSubtitleId === id) {
+        EditorState.selectedSubtitleId = null;
+    }
+
+    pushHistory();
+    markDirty();
+    triggerAutosave();
+    renderSubtitleEditor();
+    renderTimeline();
+}
+
+// =============================================================================
+// History (Undo/Redo)
+// =============================================================================
+
+function pushHistory() {
+    if (EditorState.historyIndex < EditorState.history.length - 1) {
+        EditorState.history = EditorState.history.slice(0, EditorState.historyIndex + 1);
+    }
+
+    EditorState.history.push(JSON.parse(JSON.stringify(EditorState.subtitles)));
+    EditorState.historyIndex = EditorState.history.length - 1;
+
+    if (EditorState.history.length > EditorState.maxHistory) {
+        EditorState.history.shift();
+        EditorState.historyIndex--;
+    }
+
+    updateHistoryButtons();
+}
+
+function undo() {
+    if (EditorState.historyIndex <= 0) return;
+
+    EditorState.historyIndex--;
+    EditorState.subtitles = JSON.parse(JSON.stringify(EditorState.history[EditorState.historyIndex]));
+
+    markDirty();
+    triggerAutosave();
+    renderSubtitleEditor();
+    renderTimeline();
+    updateHistoryButtons();
+}
+
+function redo() {
+    if (EditorState.historyIndex >= EditorState.history.length - 1) return;
+
+    EditorState.historyIndex++;
+    EditorState.subtitles = JSON.parse(JSON.stringify(EditorState.history[EditorState.historyIndex]));
+
+    markDirty();
+    triggerAutosave();
+    renderSubtitleEditor();
+    renderTimeline();
+    updateHistoryButtons();
+}
+
+function updateHistoryButtons() {
+    els.btnUndo.disabled = EditorState.historyIndex <= 0;
+    els.btnRedo.disabled = EditorState.historyIndex >= EditorState.history.length - 1;
+}
+
+// =============================================================================
+// Autosave
+// =============================================================================
+
+function markDirty() {
+    EditorState.subtitlesDirty = true;
+    els.saveStatus.textContent = 'Не сохранено';
+    els.saveStatus.classList.remove('hidden');
+    els.saveStatus.classList.add('text-yellow-500');
+    els.saveStatus.classList.remove('text-green-500');
+}
+
+function markClean() {
+    EditorState.subtitlesDirty = false;
+    els.saveStatus.textContent = 'Сохранено';
+    els.saveStatus.classList.remove('hidden');
+    els.saveStatus.classList.remove('text-yellow-500');
+    els.saveStatus.classList.add('text-green-500');
+
+    setTimeout(() => {
+        if (!EditorState.subtitlesDirty) {
+            els.saveStatus.classList.add('hidden');
+        }
+    }, 2000);
+}
+
+function triggerAutosave() {
+    if (EditorState.saveTimer) {
+        clearTimeout(EditorState.saveTimer);
+    }
+
+    EditorState.saveTimer = setTimeout(async () => {
+        if (!EditorState.subtitlesDirty || !EditorState.currentClipId) return;
+
+        try {
+            await saveSubtitles(EditorState.currentClipId, EditorState.subtitles);
+            markClean();
+            showToast('Сохранено');
+        } catch (error) {
+            showToast('Ошибка сохранения: ' + error.message, 'error');
+        }
+    }, 1500);
+}
+
+async function forceSave() {
+    if (!EditorState.currentClipId) return;
+
+    try {
+        await saveSubtitles(EditorState.currentClipId, EditorState.subtitles);
+        markClean();
+        showToast('Сохранено');
+    } catch (error) {
+        showToast('Ошибка сохранения: ' + error.message, 'error');
+    }
+}
+
+// =============================================================================
+// Style Panel
+// =============================================================================
+
+function initStylePanel() {
+    // Format buttons
+    document.querySelectorAll('.format-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            EditorState.videoFormat = btn.dataset.format;
+            EditorState.videoWidth = parseInt(btn.dataset.width);
+            EditorState.videoHeight = parseInt(btn.dataset.height);
+            updateStyleUI();
+            updateVideoContainerAspect();
+        });
+    });
+
+    document.querySelectorAll('.style-preset').forEach(btn => {
+        btn.addEventListener('click', () => {
+            EditorState.stylePreset = btn.dataset.style;
+            updateStyleUI();
+            saveStyleSettings();
+        });
+    });
+
+    document.querySelectorAll('.font-size-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            EditorState.fontSize = btn.dataset.size;
+            updateStyleUI();
+            saveStyleSettings();
+        });
+    });
+
+    document.querySelectorAll('.position-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            EditorState.position = btn.dataset.position;
+            updateStyleUI();
+            saveStyleSettings();
+        });
+    });
+}
+
+function updateVideoContainerAspect() {
+    const container = document.getElementById('video-container');
+    if (!container) return;
+
+    const format = EditorState.videoFormat || '9:16';
+    let aspectRatio;
+
+    switch (format) {
+        case '16:9':
+            aspectRatio = '16/9';
+            container.style.height = '35vh';
+            break;
+        case '1:1':
+            aspectRatio = '1/1';
+            container.style.height = '40vh';
+            break;
+        default: // 9:16
+            aspectRatio = '9/16';
+            container.style.height = '45vh';
+    }
+
+    container.style.aspectRatio = aspectRatio;
+}
+
+function updateStyleUI() {
+    // Format buttons
+    document.querySelectorAll('.format-btn').forEach(btn => {
+        btn.dataset.active = btn.dataset.format === EditorState.videoFormat;
+    });
+
+    // Style presets
+    document.querySelectorAll('.style-preset').forEach(btn => {
+        btn.dataset.active = btn.dataset.style === EditorState.stylePreset;
+    });
+
+    // Font sizes
+    document.querySelectorAll('.font-size-btn').forEach(btn => {
+        btn.dataset.active = btn.dataset.size === EditorState.fontSize;
+    });
+
+    // Positions
+    document.querySelectorAll('.position-btn').forEach(btn => {
+        btn.dataset.active = btn.dataset.position === EditorState.position;
+    });
+}
+
+async function saveStyleSettings() {
+    if (!EditorState.currentClipId) return;
+
+    try {
+        await saveStyle(
+            EditorState.currentClipId,
+            EditorState.stylePreset,
+            EditorState.fontSize,
+            EditorState.position
+        );
+    } catch (error) {
+        console.error('Ошибка сохранения стиля:', error);
+    }
+}
+
+// =============================================================================
+// Render
+// =============================================================================
+
+async function startRender() {
+    if (!EditorState.currentClipId) {
+        showToast('Клип не выбран', 'error');
+        return;
+    }
+
+    const confirmed = await showConfirm(
+        'Перерендерить клип',
+        'Клип будет перерендерен с вашими изменениями. Стоимость: 1 кредит.'
+    );
+
+    if (!confirmed) return;
+
+    await forceSave();
+
+    EditorState.renderStatus = 'rendering';
+    updateRenderButton();
+
+    try {
+        const result = await requestRenderClip(EditorState.currentClipId);
+        // Support both task_id (legacy) and job_id (Revideo)
+        EditorState.renderTaskId = result.task_id || result.job_id;
+        pollRenderStatus();
+    } catch (error) {
+        EditorState.renderStatus = 'idle';
+        updateRenderButton();
+        showToast('Ошибка запуска рендеринга: ' + error.message, 'error');
+    }
+}
+
+async function pollRenderStatus() {
+    if (!EditorState.renderTaskId) return;
+
+    try {
+        const status = await getTaskStatus(EditorState.renderTaskId);
+
+        if (status.status === 'completed') {
+            EditorState.renderStatus = 'idle';
+            EditorState.renderTaskId = null;
+            updateRenderButton();
+            showToast('Клип готов!');
+            await loadClip(EditorState.currentClipId);
+        } else if (status.status === 'failed') {
+            EditorState.renderStatus = 'idle';
+            EditorState.renderTaskId = null;
+            updateRenderButton();
+            showToast('Ошибка рендеринга: ' + (status.error || 'Неизвестная ошибка'), 'error');
+        } else {
+            setTimeout(pollRenderStatus, 2000);
+        }
+    } catch (error) {
+        EditorState.renderStatus = 'idle';
+        updateRenderButton();
+        showToast('Ошибка проверки статуса', 'error');
+    }
+}
+
+function updateRenderButton() {
+    const isRendering = EditorState.renderStatus === 'rendering';
+
+    els.btnRender.disabled = isRendering;
+    els.renderText.textContent = isRendering ? 'Рендеринг...' : 'Перерендерить';
+    els.renderIcon.innerHTML = isRendering
+        ? '<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>'
+        : '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>';
+
+    if (isRendering) {
+        els.renderIcon.classList.add('animate-spin');
+    } else {
+        els.renderIcon.classList.remove('animate-spin');
+    }
+}
+
+// =============================================================================
+// Load Data
+// =============================================================================
+
+async function loadClips() {
+    if (EditorState.mode === 'single') {
+        await loadClip(EditorState.clipId);
+        return;
+    }
+
+    try {
+        EditorState.clips = await fetchClips(EditorState.batchId);
+        renderClipsList();
+
+        if (EditorState.clips.length > 0) {
+            await loadClip(EditorState.clips[0].clip_id);
+        }
+    } catch (error) {
+        showToast('Ошибка загрузки клипов: ' + error.message, 'error');
+    }
+}
+
+async function loadClip(clipId) {
+    try {
+        EditorState.currentClipId = clipId;
+        EditorState.currentClip = await fetchClip(clipId);
+        EditorState.subtitles = EditorState.currentClip.subtitles;
+        EditorState.duration = EditorState.currentClip.duration;
+        EditorState.stylePreset = EditorState.currentClip.style_preset;
+        EditorState.fontSize = EditorState.currentClip.font_size;
+        EditorState.position = EditorState.currentClip.position;
+        EditorState.selectedSubtitleId = null;
+        EditorState.subtitlesDirty = false;
+
+        EditorState.history = [JSON.parse(JSON.stringify(EditorState.subtitles))];
+        EditorState.historyIndex = 0;
+
+        updateVideoPlayer();
+        renderSubtitleEditor();
+        renderTimeline();
+        updateStyleUI();
+        updateHistoryButtons();
+        renderClipsList();
+
+    } catch (error) {
+        showToast('Ошибка загрузки клипа: ' + error.message, 'error');
+    }
+}
+
+// =============================================================================
+// Event Handlers
+// =============================================================================
+
+function initEventHandlers() {
+    els.videoPlayer.addEventListener('loadedmetadata', () => {
+        EditorState.duration = els.videoPlayer.duration;
+        updatePlaybackUI();
+    });
+
+    els.videoPlayer.addEventListener('timeupdate', () => {
+        EditorState.currentTime = els.videoPlayer.currentTime;
+        updatePlaybackUI();
+    });
+
+    els.videoPlayer.addEventListener('play', () => {
+        EditorState.isPlaying = true;
+        updatePlaybackUI();
+    });
+
+    els.videoPlayer.addEventListener('pause', () => {
+        EditorState.isPlaying = false;
+        updatePlaybackUI();
+    });
+
+    els.videoPlayer.addEventListener('ended', () => {
+        EditorState.isPlaying = false;
+        updatePlaybackUI();
+    });
+
+    // Handle video load errors gracefully - show placeholder instead of black screen
+    els.videoPlayer.addEventListener('error', (e) => {
+        // Only log if src was actually set (avoid infinite loop from empty src)
+        if (els.videoPlayer.src && els.videoPlayer.src !== window.location.href) {
+            console.warn('Video load error:', e.target.error?.message || 'Unknown error');
+        }
+        els.noVideoPlaceholder.classList.remove('hidden');
+        els.videoPlayer.classList.add('hidden');
+        // Don't set src = '' as it triggers another error event
+    });
+
+    // Handle successful video load
+    els.videoPlayer.addEventListener('loadeddata', () => {
+        els.noVideoPlaceholder.classList.add('hidden');
+        els.videoPlayer.classList.remove('hidden');
+    });
+
+    els.btnPlay.addEventListener('click', () => {
+        if (EditorState.isPlaying) {
+            els.videoPlayer.pause();
+        } else {
+            els.videoPlayer.play();
+        }
+    });
+
+    els.progressBar.addEventListener('click', (e) => {
+        const rect = els.progressBar.getBoundingClientRect();
+        const percent = (e.clientX - rect.left) / rect.width;
+        const time = percent * EditorState.duration;
+        els.videoPlayer.currentTime = time;
+    });
+
+    els.subtitleTimeline.addEventListener('click', (e) => {
+        if (e.target.classList.contains('timeline-block') || e.target.classList.contains('resize-handle')) {
+            return;
+        }
+        const rect = els.subtitleTimeline.getBoundingClientRect();
+        const percent = (e.clientX - rect.left) / rect.width;
+        const time = percent * EditorState.duration;
+        if (els.videoPlayer.readyState >= 1) {
+            els.videoPlayer.currentTime = time;
+        }
+    });
+
+    els.btnUndo.addEventListener('click', undo);
+    els.btnRedo.addEventListener('click', redo);
+
+    els.btnRender.addEventListener('click', startRender);
+
+    document.addEventListener('keydown', (e) => {
+        if (e.target.matches('input, textarea')) {
+            if (e.key === 'Escape') {
+                e.target.blur();
+            }
+            return;
+        }
+
+        if (e.key === ' ') {
+            e.preventDefault();
+            if (EditorState.isPlaying) {
+                els.videoPlayer.pause();
+            } else {
+                els.videoPlayer.play();
+            }
+        }
+
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            e.preventDefault();
+            const currentIndex = EditorState.subtitles.findIndex(s => s.id === EditorState.selectedSubtitleId);
+            const newIndex = e.key === 'ArrowUp'
+                ? Math.max(0, currentIndex - 1)
+                : Math.min(EditorState.subtitles.length - 1, currentIndex + 1);
+            if (EditorState.subtitles[newIndex]) {
+                selectSubtitle(EditorState.subtitles[newIndex].id);
+            }
+        }
+
+        if (e.key === 'Enter' && EditorState.selectedSubtitleId) {
+            e.preventDefault();
+            const input = document.querySelector(`.subtitle-text[data-id="${EditorState.selectedSubtitleId}"]`);
+            if (input) input.focus();
+        }
+
+        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+            e.preventDefault();
+            forceSave();
+        }
+
+        if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+            e.preventDefault();
+            undo();
+        }
+
+        if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) {
+            e.preventDefault();
+            redo();
+        }
+
+        if (e.key === 'j') {
+            els.videoPlayer.currentTime = Math.max(0, els.videoPlayer.currentTime - 5);
+        }
+        if (e.key === 'l') {
+            els.videoPlayer.currentTime = Math.min(EditorState.duration, els.videoPlayer.currentTime + 5);
+        }
+    });
+}
+
+// =============================================================================
+// Initialize
+// =============================================================================
+
+async function init() {
+    initEventHandlers();
+    initStylePanel();
+    updateStyleUI();  // Set initial button states
+    updateVideoContainerAspect();  // Set initial aspect ratio
+    await loadClips();
+}
+
+init();
+</script>
+{% endblock %}
