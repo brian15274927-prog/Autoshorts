@@ -26,6 +26,12 @@ from .clips_repo import (
     Subtitle,
     get_clips_repository,
 )
+from .faceless_jobs_repo import (
+    FacelessJobsRepository,
+    FacelessJobRecord,
+    VideoSegmentRecord,
+    get_faceless_jobs_repository,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +71,10 @@ __all__ = [
     "ClipRecord",
     "Subtitle",
     "get_clips_repository",
+    "FacelessJobsRepository",
+    "FacelessJobRecord",
+    "VideoSegmentRecord",
+    "get_faceless_jobs_repository",
     "get_storage_backend",
     "is_sqlite_backend",
     "STORAGE_BACKEND_SQLITE",

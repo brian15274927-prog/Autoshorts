@@ -25,15 +25,34 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
-# Output directory for generated images
-DALLE_OUTPUT_DIR = Path(__file__).parent.parent.parent / "data" / "dalle"
+# Output directory for generated images - ABSOLUTE PATH for Windows reliability
+DALLE_OUTPUT_DIR = Path(r"C:\dake\data\temp_images")
 DALLE_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+logger.info(f"DALL-E output directory: {DALLE_OUTPUT_DIR}")
+
+
+class DalleBillingError(Exception):
+    """Raised when OpenAI returns a billing-related error (400 status with billing message)."""
+    def __init__(self, message: str, error_code: str = None, full_response: str = None):
+        self.message = message
+        self.error_code = error_code
+        self.full_response = full_response
+        super().__init__(self.message)
+
+
+class DalleContentPolicyError(Exception):
+    """Raised when DALL-E rejects a prompt due to content policy."""
+    def __init__(self, message: str, prompt: str = None):
+        self.message = message
+        self.prompt = prompt
+        super().__init__(self.message)
 
 
 def get_ffmpeg_path() -> str:
     """Get FFmpeg executable path - prioritize local installation."""
     local_paths = [
         r"C:\dake\tools\ffmpeg-master-latest-win64-gpl\bin\ffmpeg.exe",
+        r"C:\dake\tools\ffmpeg-8.0.1-essentials_build\bin\ffmpeg.exe",
         r"C:\ffmpeg\bin\ffmpeg.exe",
         r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
     ]
@@ -72,9 +91,11 @@ class DalleService:
     OPENAI_API_URL = "https://api.openai.com/v1/images/generations"
 
     # Size options for DALL-E 3
+    # COST OPTIMIZATION: Always use 1024x1024 ($0.04) instead of 1024x1792 ($0.08)
+    # Images will be scaled/cropped by Ken Burns effect anyway
     SIZES = {
-        "9:16": "1024x1792",  # Vertical (TikTok/Shorts)
-        "16:9": "1792x1024",  # Horizontal (YouTube)
+        "9:16": "1024x1024",  # Vertical - use square, scale in post
+        "16:9": "1024x1024",  # Horizontal - use square, scale in post
         "1:1": "1024x1024",   # Square (Instagram)
     }
 
@@ -83,16 +104,37 @@ class DalleService:
         self.api_key = api_key or config.ai.openai_api_key or ""
         self.client = httpx.AsyncClient(timeout=120.0)
 
+        # STARTUP DIAGNOSTIC - Log API key status
+        logger.info("=" * 60)
+        logger.info("DALL-E SERVICE CONFIGURATION")
+        logger.info("=" * 60)
+
         if not self.api_key or self.api_key.startswith("PASTE_"):
-            logger.warning("OpenAI API key not configured - DALL-E generation disabled")
+            logger.warning("[FAIL] OpenAI API Key: NOT CONFIGURED")
+            logger.warning("[FAIL] DALL-E will use FALLBACK gradient images!")
+            logger.warning("[WARN] Set OPENAI_API_KEY in .env to enable AI images")
             self.api_key = ""
+        else:
+            # Show masked API key (first 8 chars only)
+            masked_key = self.api_key[:8] + "..." + self.api_key[-4:] if len(self.api_key) > 12 else "***"
+            logger.info(f"[OK] OpenAI API Key: {masked_key}")
+            logger.info("[OK] DALL-E image generation ENABLED")
+
+        logger.info(f"[OK] Output Directory: {DALLE_OUTPUT_DIR}")
+        logger.info("=" * 60)
+
+    # DALL-E 3 Pricing (per image):
+    # - Standard 1024x1024: $0.04 (CHEAPEST)
+    # - Standard 1024x1792: $0.08
+    # - HD 1024x1024: $0.08
+    # - HD 1024x1792: $0.12 (MOST EXPENSIVE)
 
     async def generate_image(
         self,
         prompt: str,
         output_path: Optional[str] = None,
-        size: str = "1024x1792",
-        quality: str = "hd",
+        size: str = "1024x1024",  # COST FIX: Use square (cheapest)
+        quality: str = "standard",  # COST FIX: standard instead of hd
         style: str = "vivid"
     ) -> Optional[GeneratedImage]:
         """
@@ -140,28 +182,97 @@ class DalleService:
                 json=payload
             )
 
-            # Handle all error responses gracefully
+            # Handle all error responses with DETAILED LOGGING
             if response.status_code != 200:
                 error_text = response.text
-                logger.error(f"DALL-E API error: {response.status_code} - {error_text}")
 
-                # Check for specific errors that should use fallback
-                if response.status_code == 400:
-                    # Billing limit, content policy, etc - use fallback
-                    logger.warning("DALL-E 400 error - will use fallback image")
+                # ═══════════════════════════════════════════════════════════
+                # DETAILED ERROR LOGGING - Print EXACT OpenAI response
+                # ═══════════════════════════════════════════════════════════
+                logger.error("#" * 70)
+                logger.error("#    [ERROR] DALL-E API ERROR - GENERATION FAILED")
+                logger.error("#" * 70)
+                logger.error(f"#  Status Code: {response.status_code}")
+                logger.error(f"#  Full Response: {error_text[:500]}")
+                logger.error("#" * 70)
+
+                logger.error("=" * 60)
+                logger.error("DALL-E API ERROR - FULL DETAILS")
+                logger.error("=" * 60)
+                logger.error(f"Status Code: {response.status_code}")
+                logger.error(f"Full Response: {error_text}")
+                logger.error("=" * 60)
+
+                # Parse error details if JSON
+                error_code = None
+                error_message = error_text
+                try:
+                    import json
+                    error_json = json.loads(error_text)
+                    error_obj = error_json.get("error", {})
+                    error_code = error_obj.get("code", "unknown")
+                    error_message = error_obj.get("message", error_text)
+                    error_type = error_obj.get("type", "unknown")
+
+                    logger.error(f"Error Type: {error_type}")
+                    logger.error(f"Error Code: {error_code}")
+                    logger.error(f"Error Message: {error_message}")
+                except:
+                    pass
+
+                # ═══════════════════════════════════════════════════════════
+                # BILLING ERROR DETECTION - STOP THE SYSTEM
+                # ═══════════════════════════════════════════════════════════
+                billing_keywords = [
+                    "billing", "insufficient_quota", "exceeded", "quota",
+                    "payment", "credit", "balance", "limit reached",
+                    "rate_limit_exceeded", "insufficient_funds"
+                ]
+
+                is_billing_error = any(kw in error_text.lower() for kw in billing_keywords)
+
+                if response.status_code == 400 and is_billing_error:
+                    # CRITICAL: Log billing error prominently
+                    logger.critical("!" * 70)
+                    logger.critical("!   [BILLING ERROR] NO CREDITS / QUOTA EXCEEDED")
+                    logger.critical("!   Check your OpenAI billing at:")
+                    logger.critical("!   https://platform.openai.com/account/billing")
+                    logger.critical("!" * 70)
+
+                    logger.critical("=" * 60)
+                    logger.critical("BILLING ERROR DETECTED - STOPPING SYSTEM")
+                    logger.critical("Please check your OpenAI billing/quota at:")
+                    logger.critical("https://platform.openai.com/account/billing")
+                    logger.critical("=" * 60)
+                    raise DalleBillingError(
+                        message=f"OpenAI Billing Error: {error_message}",
+                        error_code=error_code,
+                        full_response=error_text
+                    )
+
+                # Content policy error - log but continue with fallback
+                if error_code == "content_policy_violation":
+                    logger.warning(f"Content policy violation for prompt: {prompt[:100]}...")
                     return None
-                elif response.status_code == 429:
-                    # Rate limit - use fallback
+
+                # Rate limit - use fallback
+                if response.status_code == 429:
                     logger.warning("DALL-E rate limited - will use fallback image")
                     return None
-                elif response.status_code == 401:
-                    # Invalid API key - use fallback
+
+                # Auth error - use fallback
+                if response.status_code == 401:
                     logger.warning("DALL-E auth failed - will use fallback image")
                     return None
-                else:
-                    # Other errors - use fallback
-                    logger.warning(f"DALL-E error {response.status_code} - will use fallback image")
+
+                # Other 400 errors - use fallback
+                if response.status_code == 400:
+                    logger.warning(f"DALL-E 400 error ({error_code}) - will use fallback image")
                     return None
+
+                # Other errors - use fallback
+                logger.warning(f"DALL-E error {response.status_code} - will use fallback image")
+                return None
 
             data = response.json()
             image_data = data["data"][0]
@@ -209,6 +320,21 @@ class DalleService:
             logger.error(f"Image download failed: {e}")
             raise
 
+    # Cost tracking
+    COST_PER_IMAGE = {
+        "standard_1024": 0.04,
+        "standard_1792": 0.08,
+        "hd_1024": 0.08,
+        "hd_1792": 0.12,
+    }
+
+    def _calculate_prompt_hash(self, prompt: str) -> str:
+        """Create a simple hash of the prompt for similarity detection."""
+        # Extract key words (nouns, adjectives) for comparison
+        import re
+        words = re.findall(r'\b[a-zA-Z]{4,}\b', prompt.lower())
+        return " ".join(sorted(set(words[:10])))  # First 10 unique words
+
     async def generate_images_for_segments(
         self,
         segments: List[Dict[str, Any]],
@@ -218,8 +344,12 @@ class DalleService:
         topic: str = ""
     ) -> List[GeneratedImage]:
         """
-        Generate images for multiple script segments.
-        Always returns images for all segments (using fallbacks when needed).
+        Generate images for multiple script segments with COST OPTIMIZATION.
+
+        Optimizations:
+        - Reuses images for similar prompts (saves API calls)
+        - Uses standard quality 1024x1024 (cheapest at $0.04/image)
+        - Logs estimated cost after generation
 
         Args:
             segments: List of script segments
@@ -236,27 +366,84 @@ class DalleService:
 
         os.makedirs(output_dir, exist_ok=True)
 
-        size = self.SIZES.get(video_format, "1024x1792")
+        size = self.SIZES.get(video_format, "1024x1024")  # Always use cheapest
         images = []
+
+        # COST OPTIMIZATION: Track generated images for reuse
+        prompt_to_image: Dict[str, GeneratedImage] = {}
+        api_calls = 0
+        reused_images = 0
 
         # Generate images one by one to handle errors gracefully
         for idx, prompt in enumerate(visual_prompts):
             output_path = os.path.join(output_dir, f"segment_{idx:03d}.png")
 
-            # Try to generate with DALL-E
-            image = await self.generate_image(prompt, output_path, size=size)
+            # COST OPTIMIZATION: Check for similar prompts to reuse images
+            prompt_hash = self._calculate_prompt_hash(prompt)
+            reuse_key = None
 
-            if image is not None:
-                image.segment_index = idx
-                images.append(image)
-                logger.info(f"Segment {idx}: DALL-E image generated")
+            for existing_hash, existing_image in prompt_to_image.items():
+                # If prompts are >70% similar, reuse the image
+                common_words = set(prompt_hash.split()) & set(existing_hash.split())
+                if len(common_words) >= 5:  # At least 5 common keywords
+                    reuse_key = existing_hash
+                    break
+
+            if reuse_key and reuse_key in prompt_to_image:
+                # REUSE existing image (copy file)
+                existing = prompt_to_image[reuse_key]
+                import shutil
+                shutil.copy(existing.image_path, output_path)
+
+                reused = GeneratedImage(
+                    image_path=output_path,
+                    prompt=f"[reused] {prompt}",
+                    size=size,
+                    segment_index=idx
+                )
+                images.append(reused)
+                reused_images += 1
+                logger.info(f"Segment {idx}: REUSED image from similar prompt (saved $0.04)")
             else:
-                # Create fallback gradient image with topic text
-                fallback = self._create_fallback_image_sync(output_path, size, idx, topic)
-                images.append(fallback)
-                logger.info(f"Segment {idx}: Using gradient fallback image")
+                try:
+                    # Try to generate with DALL-E
+                    image = await self.generate_image(prompt, output_path, size=size)
 
-        logger.info(f"Generated {len(images)} images for {len(segments)} segments")
+                    if image is not None:
+                        image.segment_index = idx
+                        images.append(image)
+                        prompt_to_image[prompt_hash] = image  # Store for potential reuse
+                        api_calls += 1
+                        logger.info(f"Segment {idx}: DALL-E image generated")
+                    else:
+                        # Create fallback gradient image with topic text
+                        fallback = self._create_fallback_image_sync(output_path, size, idx, topic)
+                        images.append(fallback)
+                        logger.info(f"Segment {idx}: Using gradient fallback image")
+
+                except DalleBillingError as e:
+                    # CRITICAL: Billing error - stop the entire process
+                    logger.critical(f"BILLING ERROR at segment {idx}: {e.message}")
+                    logger.critical("Stopping video generation due to billing issue.")
+                    raise  # Re-raise to stop the entire process
+
+        # ═══════════════════════════════════════════════════════════════
+        # COST LOGGING - Show estimated cost after generation
+        # ═══════════════════════════════════════════════════════════════
+        image_cost = api_calls * 0.04  # Standard 1024x1024 = $0.04
+        savings = reused_images * 0.04
+
+        logger.info("=" * 60)
+        logger.info("DALL-E COST SUMMARY")
+        logger.info("=" * 60)
+        logger.info(f"  Images generated: {api_calls}")
+        logger.info(f"  Images reused: {reused_images}")
+        logger.info(f"  Total images: {len(images)}")
+        logger.info(f"  Cost per image: $0.04 (standard 1024x1024)")
+        logger.info(f"  IMAGE COST: ${image_cost:.2f}")
+        logger.info(f"  SAVINGS FROM REUSE: ${savings:.2f}")
+        logger.info("=" * 60)
+
         return images
 
     def _create_fallback_image_sync(self, output_path: str, size: str, segment_index: int = 0, topic: str = "") -> GeneratedImage:

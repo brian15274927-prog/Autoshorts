@@ -314,7 +314,7 @@ Write the story now:"""
                 {"role": "user", "content": user_prompt}
             ],
             "temperature": 0.9,
-            "max_tokens": 1000
+            "max_tokens": 500  # COST FIX: Reduced from 1000 (150 words ~= 200 tokens)
         }
 
         try:
@@ -379,7 +379,7 @@ Return JSON with "segments" array. Each segment needs: text, duration (5.0), vis
                 {"role": "user", "content": user_prompt}
             ],
             "temperature": 0.7,
-            "max_tokens": 4000,
+            "max_tokens": 2000,  # COST FIX: Reduced from 4000 (12 segments ~= 1500 tokens)
             "response_format": {"type": "json_object"}
         }
 

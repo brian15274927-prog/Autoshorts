@@ -172,7 +172,8 @@ class KenBurnsService:
         This avoids Windows asyncio issues entirely.
         """
         if not os.path.exists(image_path):
-            logger.error(f"Image not found: {image_path}")
+            logger.error(f"[STOP] ERROR: Image NOT FOUND - STOPPING")
+            logger.error(f"[STOP] Path checked: {image_path}")
             return None
 
         # Normalize paths for FFmpeg

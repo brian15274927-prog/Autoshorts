@@ -103,6 +103,25 @@ class YouTubeDownloader:
         self.ffprobe_path = FFPROBE_PATH
         self.ffmpeg_dir = FFMPEG_DIR
 
+    def _find_node_path(self) -> Optional[str]:
+        """Find Node.js executable path."""
+        node_paths = [
+            r"C:\Program Files\nodejs\node.exe",
+            r"C:\Program Files (x86)\nodejs\node.exe",
+            r"C:\nodejs\node.exe",
+        ]
+        for path in node_paths:
+            if os.path.exists(path):
+                return path
+        # Try to find in PATH
+        try:
+            result = subprocess.run(['where', 'node'], capture_output=True, text=True, timeout=5)
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout.strip().split('\n')[0]
+        except Exception:
+            pass
+        return None
+
     def download(self, url: str) -> VideoInfo:
         """
         Download YouTube video and extract audio.
@@ -158,7 +177,15 @@ class YouTubeDownloader:
             'no_check_certificates': True,  # Alternative flag
             'ignoreerrors': False,
             'extract_flat': False,
+            # Explicitly set Node.js path for JS-dependent extractors
+            'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
         }
+
+        # Set Node.js path for yt-dlp JavaScript runtime
+        node_path = self._find_node_path()
+        if node_path:
+            os.environ['NODE_BINARY'] = node_path
+            logger.info(f"Node.js runtime: {node_path}")
 
         # Add FFmpeg location if available
         if self.ffmpeg_dir and os.path.exists(self.ffmpeg_dir):

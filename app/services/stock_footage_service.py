@@ -69,18 +69,18 @@ class StockFootageService:
         pexels_api_key: Optional[str] = None,
         pixabay_api_key: Optional[str] = None
     ):
-        # Use config module for API keys
-        from app.config import config
-
-        self.pexels_api_key = pexels_api_key or config.stock.pexels_api_key or ""
-        self.pixabay_api_key = pixabay_api_key or config.stock.pixabay_api_key or ""
+        # Stock footage is disabled - use AI generation instead (DALL-E)
+        self.pexels_api_key = pexels_api_key or ""
+        self.pixabay_api_key = pixabay_api_key or ""
 
         # Check for placeholder values
         if self.pexels_api_key.startswith("PASTE_"):
             self.pexels_api_key = ""
-            logger.warning("Pexels API key is a placeholder - stock footage disabled")
         if self.pixabay_api_key.startswith("PASTE_"):
             self.pixabay_api_key = ""
+
+        if not self.pexels_api_key and not self.pixabay_api_key:
+            logger.info("Stock footage disabled - using AI generation (DALL-E)")
 
         self.client = httpx.AsyncClient(timeout=30.0)
 

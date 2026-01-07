@@ -55,3 +55,4 @@ celerybeat.pid
 dump.rdb
 app/saas_ui_template_src/temp_clone/
 nul
+tools/

@@ -24,6 +24,13 @@ from .tts_service import TTSService, TTSResult, VoicePreset
 from .dalle_service import DalleService, VisualPromptGenerator, GeneratedImage
 from .ken_burns_service import KenBurnsService, AnimatedClip, KenBurnsEffect
 
+# Import persistence layer for SQLite storage
+from app.persistence.faceless_jobs_repo import (
+    FacelessJobsRepository,
+    get_faceless_jobs_repository,
+    FacelessJobRecord
+)
+
 logger = logging.getLogger(__name__)
 
 # Output directories
@@ -37,6 +44,7 @@ def get_ffmpeg_path() -> str:
     # Check for local FFmpeg installation first (Windows)
     local_paths = [
         r"C:\dake\tools\ffmpeg-master-latest-win64-gpl\bin\ffmpeg.exe",
+        r"C:\dake\tools\ffmpeg-8.0.1-essentials_build\bin\ffmpeg.exe",
         r"C:\ffmpeg\bin\ffmpeg.exe",
         r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
     ]
@@ -66,6 +74,7 @@ def get_ffprobe_path() -> str:
     # Check for local FFprobe installation first (Windows)
     local_paths = [
         r"C:\dake\tools\ffmpeg-master-latest-win64-gpl\bin\ffprobe.exe",
+        r"C:\dake\tools\ffmpeg-8.0.1-essentials_build\bin\ffprobe.exe",
         r"C:\ffmpeg\bin\ffprobe.exe",
         r"C:\Program Files\ffmpeg\bin\ffprobe.exe",
     ]
@@ -89,6 +98,16 @@ def get_ffprobe_path() -> str:
 
 FFMPEG_PATH = get_ffmpeg_path()
 FFPROBE_PATH = get_ffprobe_path()
+
+# STARTUP DIAGNOSTIC - Log configuration status
+logger.info("=" * 60)
+logger.info("FACELESS ENGINE CONFIGURATION")
+logger.info("=" * 60)
+logger.info(f"[OK] FFmpeg Path: {FFMPEG_PATH}")
+logger.info(f"[OK] FFprobe Path: {FFPROBE_PATH}")
+logger.info(f"[OK] FFmpeg Exists: {os.path.exists(FFMPEG_PATH)}")
+logger.info("=" * 60)
+
 logger.info(f"Using FFmpeg: {FFMPEG_PATH}")
 logger.info(f"Using FFprobe: {FFPROBE_PATH}")
 
@@ -237,7 +256,7 @@ class FacelessEngine:
     6. Render final video with subtitles
     """
 
-    # In-memory job storage (use Redis in production)
+    # In-memory job storage (also persisted to SQLite)
     _jobs: Dict[str, FacelessJob] = {}
 
     def __init__(
@@ -254,6 +273,10 @@ class FacelessEngine:
         self.ken_burns = ken_burns_service or KenBurnsService()
         self.prompt_generator = VisualPromptGenerator()
         self.progress_callback = progress_callback
+
+        # Initialize SQLite persistence
+        self.db = get_faceless_jobs_repository()
+        logger.info("FacelessEngine initialized with SQLite persistence")
 
     async def create_faceless_video(
         self,
@@ -307,7 +330,24 @@ class FacelessEngine:
             music_volume=music_volume
         )
 
+        # Store in memory
         self._jobs[job_id] = job
+
+        # PERSIST TO DATABASE - Jobs survive server restarts
+        self.db.create_job(
+            job_id=job_id,
+            user_id="default",  # TODO: Get from request context
+            topic=topic,
+            style=style.value,
+            language=language,
+            voice=voice,
+            duration=duration,
+            format=format,
+            width=width,
+            height=height,
+            subtitle_style=subtitle_style
+        )
+        logger.info(f"Job {job_id} persisted to SQLite database")
 
         # Start generation in background
         asyncio.create_task(self._run_pipeline(job))
@@ -329,11 +369,15 @@ class FacelessEngine:
         job_dir = FACELESS_DIR / job.job_id
         job_dir.mkdir(parents=True, exist_ok=True)
 
-        # Create temp directories
-        images_dir = job_dir / "images"
+        # Create temp directories - Use ABSOLUTE PATHS for Windows reliability
+        # Images go to centralized temp_images directory for easier debugging
+        temp_images_base = Path(r"C:\dake\data\temp_images")
+        temp_images_base.mkdir(parents=True, exist_ok=True)
+        images_dir = temp_images_base / job.job_id
         clips_dir = job_dir / "clips"
         images_dir.mkdir(exist_ok=True)
         clips_dir.mkdir(exist_ok=True)
+        logger.info(f"[DIR] Image output directory: {images_dir}")
 
         try:
             # ═══════════════════════════════════════════════════════════════
@@ -457,6 +501,28 @@ class FacelessEngine:
 
             job.image_paths = [img.image_path for img in generated_images]
 
+            # ═══════════════════════════════════════════════════════════════
+            # DIAGNOSTIC: Verify ALL images exist before proceeding
+            # ═══════════════════════════════════════════════════════════════
+            missing_images = []
+            for idx, img_path in enumerate(job.image_paths):
+                if not os.path.exists(img_path):
+                    missing_images.append(f"Image {idx}: {img_path}")
+                    logger.error(f"[FAIL] ERROR: Image file MISSING: {img_path}")
+                elif os.path.getsize(img_path) == 0:
+                    missing_images.append(f"Image {idx} (empty): {img_path}")
+                    logger.error(f"[FAIL] ERROR: Image file EMPTY (0 bytes): {img_path}")
+                else:
+                    logger.info(f"[OK] Image {idx} verified: {os.path.basename(img_path)} ({os.path.getsize(img_path)} bytes)")
+
+            if missing_images:
+                logger.error("!" * 70)
+                logger.error("!  CRITICAL: Missing images detected - Cannot proceed!")
+                for m in missing_images:
+                    logger.error(f"!  {m}")
+                logger.error("!" * 70)
+                raise Exception(f"Cannot proceed: {len(missing_images)} images missing or empty")
+
             # Check how many images are fallbacks (check for [fallback] in prompt)
             fallback_count = sum(1 for img in generated_images if "[fallback" in img.prompt)
             if fallback_count > 0:
@@ -529,13 +595,55 @@ class FacelessEngine:
 
             # Set completion message based on fallback status
             if job.api_limit_reached:
-                job.progress_message = "✅ Видео готово (с fallback-визуалами из-за лимита API)"
+                job.progress_message = "Video ready (with fallback visuals due to API limit)"
             elif job.used_fallback_visuals:
-                job.progress_message = "✅ Видео готово (использованы запасные изображения)"
+                job.progress_message = "Video ready (using fallback images)"
             elif job.used_fallback_script:
-                job.progress_message = "✅ Видео готово (использован запасной сценарий)"
+                job.progress_message = "Video ready (using fallback script)"
             else:
-                job.progress_message = "🎉 AI-видео готово!"
+                job.progress_message = "AI video ready!"
+
+            # PERSIST completion to database
+            self.db.complete_job(
+                job_id=job.job_id,
+                output_path=output_path,
+                status_details=job.status_details
+            )
+
+            # PERSIST segments for editor integration
+            if job.script and "segments" in job.script:
+                self.db.save_segments(
+                    job_id=job.job_id,
+                    segments=job.script["segments"],
+                    image_paths=job.image_paths or []
+                )
+                logger.info(f"Saved {len(job.script['segments'])} segments for editor")
+
+            logger.info(f"Job {job.job_id} completed and persisted to database")
+
+            # ═══════════════════════════════════════════════════════════════
+            # TOTAL COST ESTIMATION
+            # ═══════════════════════════════════════════════════════════════
+            num_images = len(job.image_paths) if job.image_paths else 0
+            # Count non-fallback images (actual API calls)
+            actual_dalle_calls = sum(1 for img in generated_images if "[fallback" not in img.prompt and "[reused]" not in img.prompt)
+            reused_count = sum(1 for img in generated_images if "[reused]" in img.prompt)
+
+            # Cost calculation (optimized settings)
+            dalle_cost = actual_dalle_calls * 0.04  # Standard 1024x1024
+            gpt_cost = 0.04  # ~2 GPT-4o calls (story + segments)
+            total_cost = dalle_cost + gpt_cost
+
+            logger.info("=" * 70)
+            logger.info("ESTIMATED COST FOR THIS VIDEO")
+            logger.info("=" * 70)
+            logger.info(f"  GPT-4o (script generation): $0.04")
+            logger.info(f"  DALL-E 3 ({actual_dalle_calls} images x $0.04): ${dalle_cost:.2f}")
+            logger.info(f"  Images reused (saved): {reused_count} (saved ${reused_count * 0.04:.2f})")
+            logger.info(f"  Fallback images (free): {num_images - actual_dalle_calls - reused_count}")
+            logger.info("-" * 70)
+            logger.info(f"  TOTAL ESTIMATED COST: ${total_cost:.2f}")
+            logger.info("=" * 70)
 
             await self._notify_progress(job)
 
@@ -548,7 +656,12 @@ class FacelessEngine:
             traceback.print_exc()
             job.status = JobStatus.FAILED
             job.error = str(e)
-            job.progress_message = f"❌ Ошибка: {str(e)}"
+            job.progress_message = f"Error: {str(e)}"
+
+            # PERSIST failure to database
+            self.db.fail_job(job.job_id, str(e))
+            logger.error(f"Job {job.job_id} failed and persisted to database")
+
             await self._notify_progress(job)
 
     def _calculate_segment_durations(
@@ -952,10 +1065,19 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         progress: float,
         message: str
     ):
-        """Update job progress."""
+        """Update job progress and persist to database."""
         job.status = status
         job.progress = progress
         job.progress_message = message
+
+        # PERSIST progress to database
+        self.db.update_job_status(
+            job_id=job.job_id,
+            status=status.value,
+            progress=progress,
+            progress_message=message
+        )
+
         await self._notify_progress(job)
 
     async def _notify_progress(self, job: FacelessJob):
@@ -976,14 +1098,101 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         return dimensions.get(format, (1080, 1920))
 
     def get_job(self, job_id: str) -> Optional[FacelessJob]:
-        """Get job by ID."""
-        return self._jobs.get(job_id)
+        """Get job by ID. Checks memory first, then database."""
+        # Check memory first
+        if job_id in self._jobs:
+            return self._jobs[job_id]
+
+        # Load from database if not in memory
+        db_record = self.db.get_job(job_id)
+        if db_record:
+            # Reconstruct FacelessJob from database record
+            job = self._db_record_to_job(db_record)
+            self._jobs[job_id] = job  # Cache in memory
+            return job
+
+        return None
+
+    def _db_record_to_job(self, record: FacelessJobRecord) -> FacelessJob:
+        """Convert database record to FacelessJob object."""
+        import json
+
+        # Parse JSON fields
+        script = None
+        if record.script_json:
+            try:
+                script = json.loads(record.script_json)
+            except:
+                pass
+
+        image_paths = []
+        if record.image_paths_json:
+            try:
+                image_paths = json.loads(record.image_paths_json)
+            except:
+                pass
+
+        clip_paths = []
+        if record.clip_paths_json:
+            try:
+                clip_paths = json.loads(record.clip_paths_json)
+            except:
+                pass
+
+        return FacelessJob(
+            job_id=record.job_id,
+            topic=record.topic,
+            status=JobStatus(record.status),
+            progress=record.progress,
+            progress_message=record.progress_message,
+            created_at=record.created_at,
+            completed_at=record.completed_at,
+            style=record.style,
+            language=record.language,
+            voice=record.voice,
+            duration=record.duration,
+            format=record.format,
+            width=record.width,
+            height=record.height,
+            subtitle_style=record.subtitle_style,
+            script=script,
+            audio_path=record.audio_path,
+            audio_duration=record.audio_duration,
+            image_paths=image_paths,
+            clip_paths=clip_paths,
+            output_path=record.output_path,
+            error=record.error,
+            used_fallback_script=record.used_fallback_script,
+            used_fallback_visuals=record.used_fallback_visuals,
+            api_limit_reached=record.api_limit_reached,
+            status_details=record.status_details
+        )
 
     def get_job_status(self, job_id: str) -> Optional[Dict[str, Any]]:
-        """Get job status as dict."""
-        job = self._jobs.get(job_id)
+        """Get job status as dict. Loads from database if not in memory."""
+        job = self.get_job(job_id)  # Use get_job which checks both memory and DB
         if not job:
             return None
+
+        # Build image URLs for UI display
+        image_urls = []
+        images_dir = FACELESS_DIR / job_id / "images"
+        temp_images_dir = Path(r"C:\dake\data\temp_images") / job_id
+
+        # Check both possible image locations
+        for check_dir in [images_dir, temp_images_dir]:
+            if check_dir.exists():
+                for img_path in sorted(check_dir.glob("*.png")):
+                    if "temp_images" in str(check_dir):
+                        image_urls.append(f"/data/temp_images/{job_id}/{img_path.name}")
+                    else:
+                        image_urls.append(f"/data/faceless/{job_id}/images/{img_path.name}")
+                break  # Use first found location
+
+        # Build video URL
+        video_url = None
+        if job.output_path and job.status == JobStatus.COMPLETED:
+            video_url = f"/data/faceless/{job_id}/final.mp4"
 
         return {
             "job_id": job.job_id,
@@ -994,9 +1203,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             "created_at": job.created_at,
             "completed_at": job.completed_at,
             "output_path": job.output_path,
+            "video_url": video_url,
             "error": job.error,
             "script": job.script,
             "audio_duration": job.audio_duration,
+            # Image URLs for preview
+            "image_urls": image_urls,
             # New status flags for UI
             "used_fallback_script": job.used_fallback_script,
             "used_fallback_visuals": job.used_fallback_visuals,
@@ -1004,15 +1216,16 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             "status_details": job.status_details,
         }
 
-    def list_jobs(self, limit: int = 20) -> List[Dict[str, Any]]:
-        """List recent jobs."""
-        jobs = sorted(
-            self._jobs.values(),
-            key=lambda j: j.created_at,
-            reverse=True
-        )[:limit]
+    def list_jobs(self, limit: int = 20, user_id: str = None) -> List[Dict[str, Any]]:
+        """List recent jobs from database."""
+        # Load from database for persistence across restarts
+        if user_id:
+            db_records = self.db.get_user_jobs(user_id, limit=limit)
+        else:
+            db_records = self.db.get_all_jobs(limit=limit)
 
-        return [self.get_job_status(j.job_id) for j in jobs]
+        # Convert to API response format
+        return [self.db.to_api_response(record) for record in db_records]
 
     async def close(self):
         """Close all services."""
@@ -1042,9 +1255,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             "black.mp4",  # fallback video
         ]
 
-        # Delete temp folders (images, clips, footage)
+        # Delete temp folders (clips, footage) - keep images for preview
         import shutil
-        for folder_name in ["images", "clips", "footage"]:
+        for folder_name in ["clips", "footage"]:
             folder_dir = job_dir / folder_name
             if folder_dir.exists():
                 shutil.rmtree(folder_dir, ignore_errors=True)

@@ -64,6 +64,7 @@ class JobStatusResponse(BaseModel):
     error: Optional[str]
     script: Optional[dict]
     audio_duration: Optional[float]
+    image_urls: Optional[List[str]] = None
 
 
 class ScriptPreviewRequest(BaseModel):
@@ -160,10 +161,176 @@ async def get_job_status(job_id: str):
 
 
 @router.get("/jobs")
-async def list_jobs(limit: int = 20):
-    """List recent faceless video generation jobs."""
+async def list_jobs(limit: int = 50):
+    """
+    List recent faceless video generation jobs.
+    Jobs are persisted to SQLite and survive server restarts.
+    """
     engine = get_faceless_engine()
-    return engine.list_jobs(limit=limit)
+    return {"jobs": engine.list_jobs(limit=limit)}
+
+
+@router.get("/history")
+async def get_job_history(limit: int = 50, status: str = None):
+    """
+    Get job history from database.
+    Supports filtering by status: pending, processing, completed, failed
+    """
+    from app.persistence.faceless_jobs_repo import get_faceless_jobs_repository
+
+    repo = get_faceless_jobs_repository()
+
+    if status:
+        jobs = repo.get_all_jobs(limit=limit)
+        jobs = [j for j in jobs if j.status == status]
+    else:
+        jobs = repo.get_all_jobs(limit=limit)
+
+    return {
+        "jobs": [repo.to_api_response(j) for j in jobs],
+        "total": len(jobs)
+    }
+
+
+@router.get("/job/{job_id}/full")
+async def get_full_job_details(job_id: str):
+    """
+    Get complete job details for editor.
+    Includes script, images, video URL, and all metadata.
+    """
+    from app.persistence.faceless_jobs_repo import get_faceless_jobs_repository
+
+    repo = get_faceless_jobs_repository()
+    job_record = repo.get_job(job_id)
+
+    if not job_record:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    return repo.to_api_response(job_record)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# EDITOR INTEGRATION ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════
+
+@router.get("/edit/{job_id}")
+async def get_job_for_editor(job_id: str):
+    """
+    Get complete job data formatted for the video editor.
+    Returns all segments with their image URLs for editing.
+
+    Response format:
+    {
+        "job_id": "...",
+        "topic": "...",
+        "video_url": "/data/faceless/{job_id}/final.mp4",
+        "segments": [
+            {
+                "index": 0,
+                "text": "...",
+                "duration": 5.0,
+                "image_url": "/temp_images/{job_id}/segment_000.png",
+                ...
+            }
+        ]
+    }
+    """
+    from app.persistence.faceless_jobs_repo import get_faceless_jobs_repository
+
+    repo = get_faceless_jobs_repository()
+    editor_data = repo.get_job_for_editor(job_id)
+
+    if not editor_data:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    return editor_data
+
+
+@router.get("/edit/{job_id}/segments")
+async def get_job_segments(job_id: str):
+    """Get all segments for a job (for timeline display)."""
+    from app.persistence.faceless_jobs_repo import get_faceless_jobs_repository
+
+    repo = get_faceless_jobs_repository()
+    segments = repo.get_segments(job_id)
+
+    if not segments:
+        # Check if job exists
+        job = repo.get_job(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        return {"segments": [], "message": "No segments found for this job"}
+
+    return {
+        "job_id": job_id,
+        "segments": [
+            {
+                "index": seg.segment_index,
+                "text": seg.text,
+                "duration": seg.duration,
+                "image_url": seg.image_url,
+                "image_path": seg.image_path,
+                "visual_prompt": seg.visual_prompt,
+                "emotion": seg.emotion,
+                "segment_type": seg.segment_type,
+            }
+            for seg in segments
+        ],
+        "count": len(segments)
+    }
+
+
+@router.put("/edit/{job_id}/segment/{segment_index}")
+async def update_segment(job_id: str, segment_index: int, text: str = None, duration: float = None):
+    """
+    Update a specific segment (for editor changes).
+    Allows modifying text and duration of individual segments.
+    """
+    from app.persistence.faceless_jobs_repo import get_faceless_jobs_repository
+
+    repo = get_faceless_jobs_repository()
+
+    # Verify job exists
+    job = repo.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # Update segment
+    success = repo.update_segment(job_id, segment_index, text=text, duration=duration)
+
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Segment {segment_index} not found")
+
+    return {"success": True, "message": f"Segment {segment_index} updated"}
+
+
+@router.get("/recent")
+async def get_recent_jobs(limit: int = 20):
+    """
+    Get recent jobs for the 'Recent Jobs' page.
+    Returns jobs from database so they persist across server restarts.
+    """
+    from app.persistence.faceless_jobs_repo import get_faceless_jobs_repository
+
+    repo = get_faceless_jobs_repository()
+    jobs = repo.get_all_jobs(limit=limit)
+
+    return {
+        "jobs": [
+            {
+                "job_id": job.job_id,
+                "topic": job.topic,
+                "status": job.status,
+                "progress": job.progress,
+                "created_at": job.created_at,
+                "completed_at": job.completed_at,
+                "video_url": f"/data/faceless/{job.job_id}/final.mp4" if job.status == "completed" else None,
+                "can_edit": job.status == "completed",
+            }
+            for job in jobs
+        ],
+        "total": len(jobs)
+    }
 
 
 @router.get("/download/{job_id}")
@@ -186,6 +353,44 @@ async def download_video(job_id: str):
         media_type="video/mp4",
         filename=f"faceless_{job_id[:8]}.mp4"
     )
+
+
+@router.get("/images/{job_id}")
+async def get_job_images(job_id: str):
+    """
+    Get the list of generated images for a job.
+    Returns URLs to access the images via /data/ static route.
+    """
+    engine = get_faceless_engine()
+    job = engine.get_job(job_id)
+
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # Check for images in the job directory
+    images_dir = FACELESS_DIR / job_id / "images"
+    if not images_dir.exists():
+        return {"job_id": job_id, "images": [], "message": "Images folder not found"}
+
+    # Get all PNG images
+    image_files = sorted(images_dir.glob("*.png"))
+
+    # Build URLs using the /data/ static mount
+    images = []
+    for img_path in image_files:
+        # URL format: /data/faceless/{job_id}/images/{filename}
+        url = f"/data/faceless/{job_id}/images/{img_path.name}"
+        images.append({
+            "filename": img_path.name,
+            "url": url,
+            "segment_index": int(img_path.stem.split("_")[-1]) if "_" in img_path.stem else 0
+        })
+
+    return {
+        "job_id": job_id,
+        "images": images,
+        "count": len(images)
+    }
 
 
 # =============================================================================

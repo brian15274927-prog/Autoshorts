@@ -21,6 +21,7 @@ load_dotenv(env_path)
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response
+from fastapi.staticfiles import StaticFiles
 
 from app.auth import AuthMiddleware
 
@@ -115,6 +116,27 @@ def create_app(
     app.include_router(saas_ui_router)  # New SaaS UI (replaces old public_ui)
     app.include_router(orchestration_router)
     app.include_router(youtube_shorts_router)  # YouTube Shorts module
+
+    # Mount static files for generated content (images, videos)
+    data_dir = Path(__file__).parent.parent.parent / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    app.mount("/data", StaticFiles(directory=str(data_dir)), name="data")
+
+    # Mount explicit outputs directory for permanent video URLs
+    outputs_dir = Path(r"C:\dake\data\outputs")
+    outputs_dir.mkdir(parents=True, exist_ok=True)
+    app.mount("/outputs", StaticFiles(directory=str(outputs_dir)), name="outputs")
+
+    # CRITICAL: Mount temp_images directory for AI-generated images
+    # This allows the editor to access images via /temp_images/{job_id}/{filename}
+    temp_images_dir = Path(r"C:\dake\data\temp_images")
+    temp_images_dir.mkdir(parents=True, exist_ok=True)
+    app.mount("/temp_images", StaticFiles(directory=str(temp_images_dir)), name="temp_images")
+
+    logger.info(f"Static files mounted:")
+    logger.info(f"  /data -> {data_dir}")
+    logger.info(f"  /outputs -> {outputs_dir}")
+    logger.info(f"  /temp_images -> {temp_images_dir} (for editor)")
 
     @app.get("/favicon.ico", include_in_schema=False)
     async def favicon():
