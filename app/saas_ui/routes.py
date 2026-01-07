@@ -231,3 +231,47 @@ async def faceless_studio(
         "credits": credits,
         "user_id": user_id,
     })
+
+
+# =============================================================================
+# Music Video Generator
+# =============================================================================
+
+@router.get("/app/musicvideo", response_class=HTMLResponse, include_in_schema=False)
+async def musicvideo_studio(
+    request: Request,
+    user: Optional[User] = Depends(get_current_user_optional),
+):
+    """
+    Music Video Generator - Create AI-generated music videos from audio.
+    """
+    credits = get_user_credits(user)
+    user_id = user.user_id if user else None
+
+    return templates.TemplateResponse("musicvideo.html", {
+        "request": request,
+        "credits": credits,
+        "user_id": user_id,
+    })
+
+
+# =============================================================================
+# AI Portraits Studio
+# =============================================================================
+
+@router.get("/app/portraits", response_class=HTMLResponse, include_in_schema=False)
+async def portraits_studio(
+    request: Request,
+    user: Optional[User] = Depends(get_current_user_optional),
+):
+    """
+    AI Portraits Studio - Generate professional portraits with templates.
+    """
+    credits = get_user_credits(user)
+    user_id = user.user_id if user else None
+
+    return templates.TemplateResponse("portraits.html", {
+        "request": request,
+        "credits": credits,
+        "user_id": user_id,
+    })

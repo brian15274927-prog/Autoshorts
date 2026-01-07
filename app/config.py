@@ -28,6 +28,7 @@ class AIConfig:
     """AI/LLM Configuration."""
     openai_api_key: Optional[str] = None
     anthropic_api_key: Optional[str] = None
+    google_api_key: Optional[str] = None  # For Nano Banana / Gemini
     openai_model: str = "gpt-4o-mini"
 
     @property
@@ -37,6 +38,10 @@ class AIConfig:
     @property
     def has_anthropic(self) -> bool:
         return bool(self.anthropic_api_key and not self.anthropic_api_key.startswith("PASTE_"))
+
+    @property
+    def has_google(self) -> bool:
+        return bool(self.google_api_key and not self.google_api_key.startswith("PASTE_"))
 
     @property
     def has_any_llm(self) -> bool:
@@ -87,6 +92,7 @@ def load_config() -> AppConfig:
     ai_config = AIConfig(
         openai_api_key=os.getenv("OPENAI_API_KEY"),
         anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
+        google_api_key=os.getenv("GOOGLE_API_KEY"),
         openai_model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
     )
 

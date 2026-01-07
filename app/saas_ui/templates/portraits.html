@@ -1,0 +1,531 @@
+{% extends "base.html" %}
+
+{% block title %}AI Портреты{% endblock %}
+
+{% block head %}
+<style>
+    /* Template card */
+    .template-card {
+        transition: all 0.3s ease;
+        cursor: pointer;
+    }
+    .template-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 20px 40px rgba(168, 85, 247, 0.2);
+    }
+    .template-card.selected {
+        border-color: #a855f7 !important;
+        box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.5);
+    }
+    .template-card .preview-overlay {
+        opacity: 0;
+        transition: opacity 0.3s;
+    }
+    .template-card:hover .preview-overlay {
+        opacity: 1;
+    }
+
+    /* Upload zone */
+    .upload-zone {
+        border: 2px dashed rgba(255,255,255,0.2);
+        transition: all 0.3s;
+    }
+    .upload-zone:hover, .upload-zone.drag-over {
+        border-color: #a855f7;
+        background: rgba(168, 85, 247, 0.1);
+    }
+    .upload-zone.has-image {
+        border-style: solid;
+        border-color: #22c55e;
+    }
+
+    /* Result preview */
+    .result-skeleton {
+        background: linear-gradient(90deg, #1a1a2e 25%, #2a2a4e 50%, #1a1a2e 75%);
+        background-size: 200% 100%;
+        animation: shimmer 1.5s infinite;
+    }
+    @keyframes shimmer {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="h-full flex flex-col" id="portraits-app">
+    <!-- Header -->
+    <header class="h-14 glass border-b border-white/5 flex items-center justify-between px-6 flex-shrink-0">
+        <div class="flex items-center gap-4">
+            <a href="/app" class="flex items-center gap-2 text-dark-400 hover:text-white transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+                </svg>
+            </a>
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-gradient-to-br from-pink-500 to-purple-600 rounded-xl flex items-center justify-center">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold text-white">AI Портреты</h1>
+                    <p class="text-xs text-dark-400">Создай профессиональный портрет за секунды</p>
+                </div>
+            </div>
+        </div>
+        <div class="flex items-center gap-4">
+            <span class="text-sm text-dark-400">{{ credits }} кредитов</span>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="flex-1 flex overflow-hidden">
+        <!-- Left: Templates & Upload -->
+        <div class="w-2/3 p-6 overflow-y-auto scrollbar-thin border-r border-white/5">
+
+            <!-- Step 1: Choose Template -->
+            <div class="mb-8">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-8 h-8 bg-brand-500 rounded-full flex items-center justify-center text-white font-bold text-sm">1</div>
+                    <h2 class="text-lg font-bold text-white">Выберите шаблон</h2>
+                </div>
+
+                <!-- Category Tabs -->
+                <div class="flex gap-2 mb-4">
+                    <button onclick="Portraits.filterCategory('all')" class="category-btn px-4 py-2 bg-brand-500/20 text-brand-400 rounded-lg text-sm font-medium" data-category="all">
+                        Все
+                    </button>
+                    <button onclick="Portraits.filterCategory('business')" class="category-btn px-4 py-2 bg-dark-800/50 text-dark-400 rounded-lg text-sm font-medium hover:bg-dark-700/50" data-category="business">
+                        Бизнес
+                    </button>
+                    <button onclick="Portraits.filterCategory('creative')" class="category-btn px-4 py-2 bg-dark-800/50 text-dark-400 rounded-lg text-sm font-medium hover:bg-dark-700/50" data-category="creative">
+                        Креатив
+                    </button>
+                    <button onclick="Portraits.filterCategory('lifestyle')" class="category-btn px-4 py-2 bg-dark-800/50 text-dark-400 rounded-lg text-sm font-medium hover:bg-dark-700/50" data-category="lifestyle">
+                        Лайфстайл
+                    </button>
+                </div>
+
+                <!-- Templates Grid -->
+                <div id="templates-grid" class="grid grid-cols-4 gap-4">
+                    <!-- Templates will be loaded here -->
+                    <div class="col-span-4 text-center py-8 text-dark-500">
+                        Загрузка шаблонов...
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 2: Upload Photo -->
+            <div class="mb-8">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-8 h-8 bg-dark-600 rounded-full flex items-center justify-center text-white font-bold text-sm" id="step2-indicator">2</div>
+                    <h2 class="text-lg font-bold text-white">Загрузите своё фото</h2>
+                </div>
+
+                <div id="upload-zone" class="upload-zone rounded-2xl p-8 text-center"
+                     ondrop="Portraits.handleDrop(event)"
+                     ondragover="Portraits.handleDragOver(event)"
+                     ondragleave="Portraits.handleDragLeave(event)">
+
+                    <div id="upload-placeholder">
+                        <div class="w-16 h-16 bg-dark-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                            <svg class="w-8 h-8 text-dark-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                            </svg>
+                        </div>
+                        <p class="text-white font-medium mb-2">Перетащите фото сюда</p>
+                        <p class="text-dark-500 text-sm mb-4">или</p>
+                        <label class="px-6 py-3 bg-brand-600 hover:bg-brand-500 text-white font-medium rounded-xl cursor-pointer transition-colors inline-block">
+                            Выбрать файл
+                            <input type="file" accept="image/*" class="hidden" onchange="Portraits.handleFileSelect(event)">
+                        </label>
+                        <p class="text-dark-600 text-xs mt-4">JPG, PNG до 10MB. Лучше всего — фото лица крупным планом.</p>
+                    </div>
+
+                    <div id="upload-preview" class="hidden">
+                        <div class="relative inline-block">
+                            <img id="uploaded-image" src="" alt="Uploaded" class="max-h-48 rounded-xl mx-auto">
+                            <button onclick="Portraits.removePhoto()" class="absolute -top-2 -right-2 w-8 h-8 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-colors">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                </svg>
+                            </button>
+                        </div>
+                        <p class="text-green-400 text-sm mt-3">Фото загружено!</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 3: Style Options -->
+            <div class="mb-8">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-8 h-8 bg-dark-600 rounded-full flex items-center justify-center text-white font-bold text-sm" id="step3-indicator">3</div>
+                    <h2 class="text-lg font-bold text-white">Дополнительные настройки</h2>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm text-dark-400 mb-2">Стиль обработки</label>
+                        <select id="processing-style" class="w-full px-4 py-3 bg-dark-800/50 border border-white/10 rounded-xl text-white focus:outline-none focus:border-brand-500">
+                            <option value="realistic">Реалистичный</option>
+                            <option value="enhanced">Улучшенный</option>
+                            <option value="artistic">Художественный</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-dark-400 mb-2">Качество</label>
+                        <select id="quality" class="w-full px-4 py-3 bg-dark-800/50 border border-white/10 rounded-xl text-white focus:outline-none focus:border-brand-500">
+                            <option value="standard">Стандарт (1024x1024)</option>
+                            <option value="hd">HD (1536x1536)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Generate Button -->
+            <button onclick="Portraits.generate()" id="btn-generate" disabled
+                    class="w-full px-6 py-4 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 disabled:from-dark-700 disabled:to-dark-700 disabled:cursor-not-allowed text-white font-bold text-lg rounded-xl transition-all flex items-center justify-center gap-3">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"></path>
+                </svg>
+                <span id="btn-text">Выберите шаблон и загрузите фото</span>
+            </button>
+        </div>
+
+        <!-- Right: Preview & Result -->
+        <div class="w-1/3 p-6 overflow-y-auto scrollbar-thin bg-dark-950/50">
+            <!-- Preview -->
+            <div class="mb-6">
+                <h3 class="text-sm font-semibold text-dark-400 uppercase tracking-wider mb-4">Предпросмотр</h3>
+
+                <div id="preview-container" class="glass rounded-2xl overflow-hidden">
+                    <!-- Empty state -->
+                    <div id="preview-empty" class="aspect-square flex items-center justify-center bg-dark-900/50">
+                        <div class="text-center p-8">
+                            <div class="w-16 h-16 bg-dark-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                <svg class="w-8 h-8 text-dark-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                                </svg>
+                            </div>
+                            <p class="text-dark-500 text-sm">Выберите шаблон для предпросмотра</p>
+                        </div>
+                    </div>
+
+                    <!-- Template preview -->
+                    <div id="preview-template" class="hidden">
+                        <img id="preview-image" src="" alt="Preview" class="w-full aspect-square object-cover">
+                        <div class="p-4">
+                            <h4 id="preview-name" class="text-white font-semibold">Название шаблона</h4>
+                            <p id="preview-desc" class="text-dark-400 text-sm mt-1">Описание</p>
+                        </div>
+                    </div>
+
+                    <!-- Generating state -->
+                    <div id="preview-generating" class="hidden aspect-square flex items-center justify-center bg-dark-900/50">
+                        <div class="text-center">
+                            <div class="w-16 h-16 relative mx-auto mb-4">
+                                <div class="absolute inset-0 border-4 border-brand-500/30 rounded-full"></div>
+                                <div class="absolute inset-0 border-4 border-brand-500 rounded-full border-t-transparent animate-spin"></div>
+                            </div>
+                            <p class="text-white font-medium">Генерация...</p>
+                            <p id="generation-status" class="text-dark-400 text-sm mt-1">Обработка изображения</p>
+                        </div>
+                    </div>
+
+                    <!-- Result -->
+                    <div id="preview-result" class="hidden">
+                        <img id="result-image" src="" alt="Result" class="w-full aspect-square object-cover">
+                        <div class="p-4 space-y-3">
+                            <div class="flex gap-2">
+                                <button onclick="Portraits.download()" class="flex-1 px-4 py-2 bg-gradient-to-r from-pink-600 to-purple-600 text-white font-medium rounded-lg flex items-center justify-center gap-2">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                                    </svg>
+                                    Скачать
+                                </button>
+                                <button onclick="Portraits.regenerate()" class="px-4 py-2 bg-white/10 hover:bg-white/20 text-white font-medium rounded-lg">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent generations -->
+            <div>
+                <h3 class="text-sm font-semibold text-dark-400 uppercase tracking-wider mb-4">Недавние</h3>
+                <div id="recent-generations" class="grid grid-cols-2 gap-3">
+                    <p class="col-span-2 text-dark-600 text-sm text-center py-4">Пока нет генераций</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const Portraits = {
+    templates: [],
+    selectedTemplate: null,
+    uploadedFile: null,
+    uploadedDataUrl: null,
+    resultUrl: null,
+
+    async init() {
+        await this.loadTemplates();
+    },
+
+    async loadTemplates() {
+        try {
+            const response = await fetch('/templates/templates.json');
+            const data = await response.json();
+            this.templates = data.portraits || [];
+            this.renderTemplates();
+        } catch (e) {
+            console.error('Failed to load templates:', e);
+            document.getElementById('templates-grid').innerHTML = `
+                <div class="col-span-4 text-center py-8">
+                    <p class="text-red-400">Не удалось загрузить шаблоны</p>
+                    <p class="text-dark-500 text-sm mt-2">Добавьте изображения в папку templates</p>
+                </div>
+            `;
+        }
+    },
+
+    renderTemplates(filter = 'all') {
+        const grid = document.getElementById('templates-grid');
+        let filtered = this.templates;
+
+        // Category filter logic would go here
+
+        if (filtered.length === 0) {
+            grid.innerHTML = `
+                <div class="col-span-4 text-center py-8">
+                    <p class="text-dark-500">Нет шаблонов в этой категории</p>
+                </div>
+            `;
+            return;
+        }
+
+        grid.innerHTML = filtered.map(t => `
+            <div class="template-card rounded-xl overflow-hidden border-2 border-white/10 bg-dark-800/50 ${this.selectedTemplate?.id === t.id ? 'selected' : ''}"
+                 onclick="Portraits.selectTemplate('${t.id}')">
+                <div class="aspect-square relative bg-dark-900">
+                    <img src="${t.preview}" alt="${t.name}"
+                         class="w-full h-full object-cover"
+                         onerror="this.parentElement.innerHTML='<div class=\\'w-full h-full flex items-center justify-center text-4xl\\'>👤</div>'">
+                    <div class="preview-overlay absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex items-end p-3">
+                        <span class="text-white text-xs font-medium">Выбрать</span>
+                    </div>
+                    ${this.selectedTemplate?.id === t.id ? '<div class="absolute top-2 right-2 w-6 h-6 bg-brand-500 rounded-full flex items-center justify-center"><svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg></div>' : ''}
+                </div>
+                <div class="p-3">
+                    <h4 class="text-white text-sm font-medium truncate">${t.name}</h4>
+                </div>
+            </div>
+        `).join('');
+    },
+
+    selectTemplate(id) {
+        this.selectedTemplate = this.templates.find(t => t.id === id);
+        this.renderTemplates();
+        this.updatePreview();
+        this.updateGenerateButton();
+    },
+
+    filterCategory(category) {
+        // Update active tab
+        document.querySelectorAll('.category-btn').forEach(btn => {
+            if (btn.dataset.category === category) {
+                btn.classList.add('bg-brand-500/20', 'text-brand-400');
+                btn.classList.remove('bg-dark-800/50', 'text-dark-400');
+            } else {
+                btn.classList.remove('bg-brand-500/20', 'text-brand-400');
+                btn.classList.add('bg-dark-800/50', 'text-dark-400');
+            }
+        });
+
+        this.renderTemplates(category);
+    },
+
+    updatePreview() {
+        const empty = document.getElementById('preview-empty');
+        const template = document.getElementById('preview-template');
+        const generating = document.getElementById('preview-generating');
+        const result = document.getElementById('preview-result');
+
+        if (this.selectedTemplate) {
+            empty.classList.add('hidden');
+            template.classList.remove('hidden');
+            generating.classList.add('hidden');
+            result.classList.add('hidden');
+
+            document.getElementById('preview-image').src = this.selectedTemplate.preview;
+            document.getElementById('preview-name').textContent = this.selectedTemplate.name;
+            document.getElementById('preview-desc').textContent = 'Ваше лицо будет добавлено в этот стиль';
+        } else {
+            empty.classList.remove('hidden');
+            template.classList.add('hidden');
+        }
+    },
+
+    handleDragOver(e) {
+        e.preventDefault();
+        document.getElementById('upload-zone').classList.add('drag-over');
+    },
+
+    handleDragLeave(e) {
+        e.preventDefault();
+        document.getElementById('upload-zone').classList.remove('drag-over');
+    },
+
+    handleDrop(e) {
+        e.preventDefault();
+        document.getElementById('upload-zone').classList.remove('drag-over');
+
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            this.processFile(files[0]);
+        }
+    },
+
+    handleFileSelect(e) {
+        const files = e.target.files;
+        if (files.length > 0) {
+            this.processFile(files[0]);
+        }
+    },
+
+    processFile(file) {
+        if (!file.type.startsWith('image/')) {
+            App.showToast('Пожалуйста, выберите изображение', 'error');
+            return;
+        }
+
+        if (file.size > 10 * 1024 * 1024) {
+            App.showToast('Файл слишком большой (макс. 10MB)', 'error');
+            return;
+        }
+
+        this.uploadedFile = file;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            this.uploadedDataUrl = e.target.result;
+            document.getElementById('uploaded-image').src = e.target.result;
+            document.getElementById('upload-placeholder').classList.add('hidden');
+            document.getElementById('upload-preview').classList.remove('hidden');
+            document.getElementById('upload-zone').classList.add('has-image');
+            document.getElementById('step2-indicator').classList.remove('bg-dark-600');
+            document.getElementById('step2-indicator').classList.add('bg-green-500');
+            this.updateGenerateButton();
+        };
+        reader.readAsDataURL(file);
+    },
+
+    removePhoto() {
+        this.uploadedFile = null;
+        this.uploadedDataUrl = null;
+        document.getElementById('uploaded-image').src = '';
+        document.getElementById('upload-placeholder').classList.remove('hidden');
+        document.getElementById('upload-preview').classList.add('hidden');
+        document.getElementById('upload-zone').classList.remove('has-image');
+        document.getElementById('step2-indicator').classList.add('bg-dark-600');
+        document.getElementById('step2-indicator').classList.remove('bg-green-500');
+        this.updateGenerateButton();
+    },
+
+    updateGenerateButton() {
+        const btn = document.getElementById('btn-generate');
+        const text = document.getElementById('btn-text');
+
+        if (this.selectedTemplate && this.uploadedFile) {
+            btn.disabled = false;
+            text.textContent = 'Создать портрет';
+        } else if (!this.selectedTemplate) {
+            btn.disabled = true;
+            text.textContent = 'Выберите шаблон';
+        } else {
+            btn.disabled = true;
+            text.textContent = 'Загрузите своё фото';
+        }
+    },
+
+    async generate() {
+        if (!this.selectedTemplate || !this.uploadedFile) {
+            App.showToast('Выберите шаблон и загрузите фото', 'error');
+            return;
+        }
+
+        // Show generating state
+        document.getElementById('preview-empty').classList.add('hidden');
+        document.getElementById('preview-template').classList.add('hidden');
+        document.getElementById('preview-generating').classList.remove('hidden');
+        document.getElementById('preview-result').classList.add('hidden');
+
+        const btn = document.getElementById('btn-generate');
+        btn.disabled = true;
+        document.getElementById('btn-text').textContent = 'Генерация...';
+
+        try {
+            const formData = new FormData();
+            formData.append('image', this.uploadedFile);
+            formData.append('template_id', this.selectedTemplate.id);
+            formData.append('style', document.getElementById('processing-style').value);
+            formData.append('quality', document.getElementById('quality').value);
+
+            const response = await fetch('/api/portraits/generate', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'Ошибка генерации');
+            }
+
+            const result = await response.json();
+            this.resultUrl = result.image_url;
+
+            // Show result
+            document.getElementById('preview-generating').classList.add('hidden');
+            document.getElementById('preview-result').classList.remove('hidden');
+            document.getElementById('result-image').src = result.image_url;
+
+            App.showToast('Портрет создан!');
+
+        } catch (e) {
+            App.showToast('Ошибка: ' + e.message, 'error');
+            this.updatePreview();
+        } finally {
+            btn.disabled = false;
+            this.updateGenerateButton();
+        }
+    },
+
+    download() {
+        if (this.resultUrl) {
+            const a = document.createElement('a');
+            a.href = this.resultUrl;
+            a.download = 'portrait.png';
+            a.click();
+        }
+    },
+
+    regenerate() {
+        this.generate();
+    }
+};
+
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+    Portraits.init();
+});
+</script>
+{% endblock %}

@@ -10,6 +10,7 @@ from .video import router as video_router
 from .broll import router as broll_router
 from .god_mode import router as god_mode_router
 from .faceless import router as faceless_router
+from .portraits import router as portraits_router
 
 __all__ = [
     "health_router",
@@ -21,4 +22,5 @@ __all__ = [
     "broll_router",
     "god_mode_router",
     "faceless_router",
+    "portraits_router",
 ]

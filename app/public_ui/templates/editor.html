@@ -219,7 +219,6 @@
                             </svg>
                             <span id="render-text">Перерендерить</span>
                         </button>
-                        <p class="text-xs text-slate-500 text-center">Стоимость: 1 кредит</p>
                     </div>
                 </div>
             </div>
@@ -1193,7 +1192,7 @@ async function startRender() {
 
     const confirmed = await showConfirm(
         'Перерендерить клип',
-        'Клип будет перерендерен с вашими изменениями. Стоимость: 1 кредит.'
+        'Клип будет перерендерен с вашими изменениями.'
     );
 
     if (!confirmed) return;

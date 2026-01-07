@@ -1,0 +1,467 @@
+{% extends "base.html" %}
+
+{% block title %}Music Video Generator{% endblock %}
+
+{% block head %}
+<style>
+    .upload-zone {
+        border: 2px dashed rgba(168, 85, 247, 0.3);
+        transition: all 0.3s ease;
+    }
+    .upload-zone:hover, .upload-zone.dragover {
+        border-color: rgba(168, 85, 247, 0.8);
+        background: rgba(168, 85, 247, 0.1);
+    }
+    .progress-bar {
+        background: linear-gradient(90deg, #a855f7 0%, #6366f1 100%);
+        transition: width 0.5s ease;
+    }
+    @keyframes pulse-glow {
+        0%, 100% { box-shadow: 0 0 20px rgba(168, 85, 247, 0.3); }
+        50% { box-shadow: 0 0 40px rgba(168, 85, 247, 0.6); }
+    }
+    .generating {
+        animation: pulse-glow 2s infinite;
+    }
+    .video-card {
+        transition: all 0.2s ease;
+    }
+    .video-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+    }
+    .style-btn.selected {
+        border-color: rgba(168, 85, 247, 0.8);
+        background: rgba(168, 85, 247, 0.2);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="h-full overflow-y-auto scrollbar-thin" x-data="musicVideoApp()" x-init="loadRecentVideos()">
+    <div class="max-w-6xl mx-auto px-4 py-8">
+
+        <!-- Two Column Layout -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+            <!-- Left: Generator -->
+            <div class="lg:col-span-2">
+                <!-- Header -->
+                <div class="mb-6">
+                    <h1 class="text-2xl font-bold text-gradient">Music Video Generator</h1>
+                    <p class="text-dark-400 text-sm">Upload audio, choose style, get AI-generated video</p>
+                </div>
+
+                <!-- Generator Card -->
+                <div class="glass rounded-2xl p-6" :class="{ 'generating': isGenerating }">
+
+                    <!-- Audio Upload -->
+                    <div class="mb-6">
+                        <div
+                            class="upload-zone rounded-xl p-6 text-center cursor-pointer"
+                            :class="{ 'dragover': isDragging, 'border-green-500 bg-green-500/10': audioFile }"
+                            @click="$refs.audioInput.click()"
+                            @dragover.prevent="isDragging = true"
+                            @dragleave.prevent="isDragging = false"
+                            @drop.prevent="handleDrop($event)"
+                        >
+                            <input
+                                type="file"
+                                x-ref="audioInput"
+                                accept=".mp3,.wav,.m4a,.aac,.ogg,.flac"
+                                class="hidden"
+                                @change="handleFileSelect($event)"
+                            >
+
+                            <template x-if="!audioFile">
+                                <div>
+                                    <div class="text-4xl mb-3">🎵</div>
+                                    <p class="text-dark-300 text-sm">Drop audio or click to upload</p>
+                                    <p class="text-dark-500 text-xs mt-1">MP3, WAV, M4A (max 7 min)</p>
+                                </div>
+                            </template>
+
+                            <template x-if="audioFile">
+                                <div class="flex items-center justify-center gap-3">
+                                    <div class="text-3xl">✅</div>
+                                    <div class="text-left">
+                                        <p class="text-green-400 font-medium text-sm" x-text="audioFile.name"></p>
+                                        <p class="text-dark-400 text-xs" x-text="formatFileSize(audioFile.size)"></p>
+                                    </div>
+                                    <button type="button" @click.stop="removeAudio()" class="ml-2 text-red-400 hover:text-red-300 text-lg">✕</button>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- Style Selection -->
+                    <div class="mb-6">
+                        <h3 class="text-sm font-medium text-dark-300 mb-3">Visual Style</h3>
+                        <div class="grid grid-cols-4 gap-2">
+                            <template x-for="style in artStyles" :key="style.value">
+                                <button
+                                    type="button"
+                                    @click="artStyle = style.value"
+                                    :class="artStyle === style.value ? 'selected' : ''"
+                                    class="style-btn border border-white/10 rounded-lg p-2 text-center transition hover:border-white/30"
+                                >
+                                    <div class="text-xl" x-text="style.icon"></div>
+                                    <div class="text-xs text-dark-400 mt-1" x-text="style.label"></div>
+                                </button>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- Provider Selection -->
+                    <div class="mb-6">
+                        <h3 class="text-sm font-medium text-dark-300 mb-3">AI Provider</h3>
+                        <div class="grid grid-cols-2 gap-3">
+                            <button
+                                type="button"
+                                @click="imageProvider = 'dalle'"
+                                :class="imageProvider === 'dalle' ? 'border-brand-500 bg-brand-500/20' : 'border-white/10 hover:border-white/30'"
+                                class="border rounded-lg p-3 text-left transition"
+                            >
+                                <div class="font-medium text-white text-sm">DALL-E 3</div>
+                                <div class="text-xs text-dark-400">Best quality</div>
+                            </button>
+                            <button
+                                type="button"
+                                @click="imageProvider = 'nanobanana'"
+                                :class="imageProvider === 'nanobanana' ? 'border-brand-500 bg-brand-500/20' : 'border-white/10 hover:border-white/30'"
+                                class="border rounded-lg p-3 text-left transition"
+                            >
+                                <div class="font-medium text-white text-sm">Nano Banana</div>
+                                <div class="text-xs text-dark-400">Fast & affordable</div>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Generate Button -->
+                    <button
+                        type="button"
+                        @click="generateVideo()"
+                        :disabled="!audioFile || isGenerating"
+                        class="w-full py-3 rounded-xl font-bold transition disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-r from-brand-500 to-indigo-600 hover:from-brand-600 hover:to-indigo-700 text-white btn-glow"
+                    >
+                        <span x-show="!isGenerating">🎬 Generate Video</span>
+                        <span x-show="isGenerating" class="flex items-center justify-center gap-2">
+                            <svg class="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <span x-text="statusText"></span>
+                        </span>
+                    </button>
+
+                    <!-- Progress -->
+                    <div x-show="isGenerating" x-cloak class="mt-4">
+                        <div class="flex justify-between text-xs mb-1">
+                            <span class="text-dark-400" x-text="statusText"></span>
+                            <span class="text-brand-400" x-text="progress + '%'"></span>
+                        </div>
+                        <div class="h-2 bg-white/10 rounded-full overflow-hidden">
+                            <div class="progress-bar h-full rounded-full" :style="'width: ' + progress + '%'"></div>
+                        </div>
+                    </div>
+
+                    <!-- Error -->
+                    <div x-show="error" x-cloak class="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30">
+                        <p class="text-red-400 text-sm" x-text="error"></p>
+                        <button @click="error = null" class="text-xs text-red-400 hover:text-red-300 mt-1">Dismiss</button>
+                    </div>
+                </div>
+
+                <!-- Current Result -->
+                <div x-show="videoUrl" x-cloak class="mt-6 glass rounded-2xl p-6">
+                    <h3 class="text-lg font-semibold mb-4 text-green-400">🎉 Video Ready!</h3>
+                    <div class="aspect-[9/16] max-w-xs mx-auto mb-4 rounded-xl overflow-hidden bg-black">
+                        <video :src="videoUrl" controls class="w-full h-full object-contain"></video>
+                    </div>
+                    <div class="flex gap-3 justify-center">
+                        <a :href="downloadUrl" download class="px-4 py-2 bg-brand-500 hover:bg-brand-600 rounded-lg text-sm font-medium transition">
+                            ⬇️ Download
+                        </a>
+                        <button @click="resetForm()" class="px-4 py-2 border border-white/20 hover:bg-white/10 rounded-lg text-sm font-medium transition">
+                            🔄 New Video
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Recent Videos -->
+            <div class="lg:col-span-1">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-semibold">My Videos</h2>
+                    <span class="text-xs text-dark-400" x-text="recentVideos.length + ' videos'"></span>
+                </div>
+
+                <!-- Videos List -->
+                <div class="space-y-3">
+                    <template x-if="recentVideos.length === 0">
+                        <div class="glass rounded-xl p-6 text-center">
+                            <div class="text-3xl mb-2">🎬</div>
+                            <p class="text-dark-400 text-sm">No videos yet</p>
+                            <p class="text-dark-500 text-xs mt-1">Generate your first music video!</p>
+                        </div>
+                    </template>
+
+                    <template x-for="video in recentVideos" :key="video.job_id">
+                        <div class="video-card glass rounded-xl p-3 cursor-pointer" @click="playVideo(video)">
+                            <div class="flex gap-3">
+                                <!-- Thumbnail -->
+                                <div class="w-16 h-24 bg-dark-800 rounded-lg flex-shrink-0 flex items-center justify-center overflow-hidden">
+                                    <template x-if="video.thumbnail">
+                                        <img :src="video.thumbnail" class="w-full h-full object-cover">
+                                    </template>
+                                    <template x-if="!video.thumbnail">
+                                        <span class="text-2xl">🎵</span>
+                                    </template>
+                                </div>
+                                <!-- Info -->
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-sm font-medium text-white truncate" x-text="video.audio_name || 'Music Video'"></p>
+                                    <p class="text-xs text-dark-400 mt-1" x-text="video.art_style"></p>
+                                    <p class="text-xs text-dark-500 mt-1" x-text="formatDate(video.created_at)"></p>
+                                    <div class="flex gap-2 mt-2">
+                                        <span class="text-xs px-2 py-0.5 rounded bg-green-500/20 text-green-400" x-show="video.status === 'completed'">Ready</span>
+                                        <span class="text-xs px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-400" x-show="video.status === 'processing'">Processing</span>
+                                        <span class="text-xs px-2 py-0.5 rounded bg-red-500/20 text-red-400" x-show="video.status === 'failed'">Failed</span>
+                                    </div>
+                                </div>
+                                <!-- Actions -->
+                                <div class="flex flex-col gap-1">
+                                    <button
+                                        @click.stop="downloadVideo(video)"
+                                        class="p-1.5 hover:bg-white/10 rounded text-dark-400 hover:text-white transition"
+                                        x-show="video.status === 'completed'"
+                                    >⬇️</button>
+                                    <button
+                                        @click.stop="deleteVideo(video)"
+                                        class="p-1.5 hover:bg-red-500/20 rounded text-dark-400 hover:text-red-400 transition"
+                                    >🗑️</button>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Video Modal -->
+    <div x-show="modalVideo" x-cloak class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" @click.self="modalVideo = null">
+        <div class="bg-dark-900 rounded-2xl max-w-lg w-full overflow-hidden">
+            <div class="aspect-[9/16] bg-black">
+                <video x-ref="modalPlayer" :src="modalVideo?.url" controls autoplay class="w-full h-full object-contain"></video>
+            </div>
+            <div class="p-4 flex justify-between items-center">
+                <div>
+                    <p class="font-medium" x-text="modalVideo?.audio_name"></p>
+                    <p class="text-sm text-dark-400" x-text="modalVideo?.art_style"></p>
+                </div>
+                <div class="flex gap-2">
+                    <a :href="modalVideo?.download_url" download class="px-3 py-1.5 bg-brand-500 hover:bg-brand-600 rounded-lg text-sm">Download</a>
+                    <button @click="modalVideo = null" class="px-3 py-1.5 border border-white/20 hover:bg-white/10 rounded-lg text-sm">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function musicVideoApp() {
+        return {
+            // Form
+            audioFile: null,
+            artStyle: 'photorealism',
+            imageProvider: 'dalle',
+
+            // UI
+            isDragging: false,
+            isGenerating: false,
+
+            // Job
+            jobId: null,
+            progress: 0,
+            status: '',
+            videoUrl: null,
+            downloadUrl: null,
+            error: null,
+
+            // Recent videos
+            recentVideos: [],
+            modalVideo: null,
+
+            artStyles: [
+                { value: 'photorealism', label: 'Cinematic', icon: '🎬' },
+                { value: 'anime', label: 'Anime', icon: '🎌' },
+                { value: 'watercolor', label: 'Watercolor', icon: '🎨' },
+                { value: 'expressionism', label: 'Abstract', icon: '🌀' },
+                { value: 'ghibli', label: 'Ghibli', icon: '🏯' },
+                { value: 'comic', label: 'Comic', icon: '💥' },
+                { value: 'pixel', label: 'Pixel Art', icon: '👾' },
+                { value: 'creepy', label: 'Dark', icon: '🌙' },
+            ],
+
+            get statusText() {
+                const map = {
+                    'queued': 'Starting...',
+                    'analyzing_audio': 'Analyzing audio...',
+                    'creating_concept': 'Creating visuals...',
+                    'generating_images': 'Generating images...',
+                    'assembling_video': 'Assembling video...',
+                    'completed': 'Done!',
+                    'failed': 'Failed'
+                };
+                return map[this.status] || 'Processing...';
+            },
+
+            handleFileSelect(e) {
+                if (e.target.files[0]) this.audioFile = e.target.files[0];
+            },
+
+            handleDrop(e) {
+                this.isDragging = false;
+                const file = e.dataTransfer.files[0];
+                if (file && (file.type.startsWith('audio/') || file.name.match(/\.(mp3|wav|m4a|aac|ogg|flac)$/i))) {
+                    this.audioFile = file;
+                }
+            },
+
+            removeAudio() {
+                this.audioFile = null;
+                this.$refs.audioInput.value = '';
+            },
+
+            formatFileSize(bytes) {
+                if (bytes < 1024) return bytes + ' B';
+                if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+                return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+            },
+
+            formatDate(dateStr) {
+                if (!dateStr) return '';
+                const date = new Date(dateStr);
+                const now = new Date();
+                const diff = now - date;
+                if (diff < 60000) return 'Just now';
+                if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
+                if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+                return date.toLocaleDateString();
+            },
+
+            async loadRecentVideos() {
+                try {
+                    const res = await fetch('/api/musicvideo/recent?limit=20');
+                    if (res.ok) {
+                        this.recentVideos = await res.json();
+                    }
+                } catch (e) {
+                    console.error('Failed to load videos:', e);
+                }
+            },
+
+            async generateVideo() {
+                if (!this.audioFile) return;
+
+                this.isGenerating = true;
+                this.error = null;
+                this.videoUrl = null;
+                this.progress = 0;
+                this.status = 'queued';
+
+                try {
+                    const formData = new FormData();
+                    formData.append('audio', this.audioFile);
+                    formData.append('art_style', this.artStyle);
+                    formData.append('image_provider', this.imageProvider);
+
+                    const res = await fetch('/api/musicvideo/generate', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const result = await res.json();
+                    if (!res.ok) {
+                        const errMsg = typeof result.detail === 'string'
+                            ? result.detail
+                            : (result.detail?.message || result.message || JSON.stringify(result.detail) || 'Failed to start');
+                        throw new Error(errMsg);
+                    }
+
+                    this.jobId = result.job_id;
+                    this.pollProgress();
+
+                } catch (e) {
+                    this.error = e.message;
+                    this.isGenerating = false;
+                }
+            },
+
+            async pollProgress() {
+                if (!this.jobId) return;
+
+                try {
+                    const res = await fetch(`/api/musicvideo/status/${this.jobId}`);
+                    const data = await res.json();
+
+                    this.progress = data.progress;
+                    this.status = data.status;
+
+                    if (data.status === 'completed') {
+                        this.videoUrl = `/api/musicvideo/stream/${this.jobId}`;
+                        this.downloadUrl = `/api/musicvideo/download/${this.jobId}`;
+                        this.isGenerating = false;
+                        this.loadRecentVideos(); // Refresh list
+                    } else if (data.status === 'failed') {
+                        const errMsg = typeof data.error === 'string'
+                            ? data.error
+                            : (data.error?.message || JSON.stringify(data.error) || 'Generation failed');
+                        this.error = errMsg;
+                        this.isGenerating = false;
+                    } else {
+                        setTimeout(() => this.pollProgress(), 2000);
+                    }
+                } catch (e) {
+                    setTimeout(() => this.pollProgress(), 3000);
+                }
+            },
+
+            playVideo(video) {
+                if (video.status !== 'completed') return;
+                this.modalVideo = {
+                    ...video,
+                    url: `/api/musicvideo/stream/${video.job_id}`,
+                    download_url: `/api/musicvideo/download/${video.job_id}`
+                };
+            },
+
+            downloadVideo(video) {
+                window.location.href = `/api/musicvideo/download/${video.job_id}`;
+            },
+
+            async deleteVideo(video) {
+                if (!confirm('Delete this video?')) return;
+                try {
+                    await fetch(`/api/musicvideo/job/${video.job_id}`, { method: 'DELETE' });
+                    this.recentVideos = this.recentVideos.filter(v => v.job_id !== video.job_id);
+                } catch (e) {
+                    console.error('Delete failed:', e);
+                }
+            },
+
+            resetForm() {
+                this.audioFile = null;
+                this.jobId = null;
+                this.progress = 0;
+                this.status = '';
+                this.videoUrl = null;
+                this.downloadUrl = null;
+                this.error = null;
+                if (this.$refs.audioInput) this.$refs.audioInput.value = '';
+            }
+        };
+    }
+</script>
+{% endblock %}

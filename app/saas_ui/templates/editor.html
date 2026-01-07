@@ -530,10 +530,13 @@ const Editor = {
     // ===========================================
     updateVideoPlayer() {
         let videoUrl = null;
-        if (this.clip?.video_filename) {
-            videoUrl = `/api/video/preview/${encodeURIComponent(this.clip.video_filename)}?v=${Date.now()}`;
-        } else if (this.clip?.video_url) {
+
+        // Prefer video_url for direct URLs (YouTube clips, etc.)
+        if (this.clip?.video_url) {
             videoUrl = this.clip.video_url;
+        } else if (this.clip?.video_filename) {
+            // Fallback to video preview API for Faceless and other jobs
+            videoUrl = `/api/video/preview/${encodeURIComponent(this.clip.video_filename)}?v=${Date.now()}`;
         }
 
         if (!videoUrl) {
@@ -894,7 +897,9 @@ const Editor = {
     },
 
     download() {
-        if (this.clip?.video_filename) {
+        if (this.clip?.video_url) {
+            window.open(this.clip.video_url, '_blank');
+        } else if (this.clip?.video_filename) {
             window.open(`/api/video/preview/${encodeURIComponent(this.clip.video_filename)}`, '_blank');
         } else {
             App.showToast(this.i18n.noVideo, 'error');

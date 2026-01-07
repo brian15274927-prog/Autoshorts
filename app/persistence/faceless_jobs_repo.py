@@ -13,6 +13,22 @@ from .database import get_connection
 logger = logging.getLogger(__name__)
 
 
+from enum import Enum
+
+
+class PipelineCheckpoint(str, Enum):
+    """
+    Pipeline checkpoint stages for resume functionality.
+    Each checkpoint represents a completed stage that can be skipped on resume.
+    """
+    NONE = "none"                      # Just created, nothing done
+    SCRIPT_DONE = "script_done"        # Script generated and saved
+    AUDIO_DONE = "audio_done"          # Audio generated and saved
+    IMAGES_DONE = "images_done"        # All DALL-E images generated
+    CLIPS_DONE = "clips_done"          # Ken Burns animation done
+    RENDERED = "rendered"              # Final video rendered
+
+
 @dataclass
 class FacelessJobRecord:
     """Complete faceless job record for persistence."""
@@ -34,6 +50,7 @@ class FacelessJobRecord:
     width: int = 1080
     height: int = 1920
     subtitle_style: str = "hormozi"
+    art_style: str = "photorealism"
 
     # Generated content paths
     script_json: Optional[str] = None  # JSON serialized script
@@ -52,6 +69,9 @@ class FacelessJobRecord:
     used_fallback_visuals: bool = False
     api_limit_reached: bool = False
     status_details: str = ""
+
+    # Checkpoint for resume functionality
+    checkpoint: str = "none"  # PipelineCheckpoint value
 
 
 @dataclass
@@ -94,6 +114,7 @@ def init_faceless_jobs_schema(conn) -> None:
             width INTEGER DEFAULT 1080,
             height INTEGER DEFAULT 1920,
             subtitle_style TEXT DEFAULT 'hormozi',
+            art_style TEXT DEFAULT 'photorealism',
 
             -- Generated content
             script_json TEXT,
@@ -111,7 +132,10 @@ def init_faceless_jobs_schema(conn) -> None:
             used_fallback_script INTEGER DEFAULT 0,
             used_fallback_visuals INTEGER DEFAULT 0,
             api_limit_reached INTEGER DEFAULT 0,
-            status_details TEXT DEFAULT ''
+            status_details TEXT DEFAULT '',
+
+            -- Checkpoint for resume functionality
+            checkpoint TEXT DEFAULT 'none'
         );
 
         -- Indexes for efficient queries
@@ -173,7 +197,8 @@ class FacelessJobsRepository:
         format: str = "9:16",
         width: int = 1080,
         height: int = 1920,
-        subtitle_style: str = "hormozi"
+        subtitle_style: str = "hormozi",
+        art_style: str = "photorealism"
     ) -> FacelessJobRecord:
         """Create a new faceless job record."""
         conn = get_connection()
@@ -183,11 +208,11 @@ class FacelessJobsRepository:
             INSERT INTO faceless_jobs (
                 job_id, user_id, topic, status, progress, progress_message,
                 created_at, style, language, voice, duration, format,
-                width, height, subtitle_style
-            ) VALUES (?, ?, ?, 'pending', 0, 'Initializing...', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                width, height, subtitle_style, art_style
+            ) VALUES (?, ?, ?, 'pending', 0, 'Initializing...', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             job_id, user_id, topic, now, style, language, voice,
-            duration, format, width, height, subtitle_style
+            duration, format, width, height, subtitle_style, art_style
         ))
 
         logger.info(f"Created faceless job: {job_id} for user {user_id}")
@@ -219,20 +244,66 @@ class FacelessJobsRepository:
         """, (status, progress, progress_message, job_id))
         return cursor.rowcount > 0
 
+    def update_checkpoint(self, job_id: str, checkpoint: str) -> bool:
+        """
+        Update job checkpoint after completing a pipeline stage.
+        This enables resume functionality - on error, we can skip completed stages.
+        """
+        conn = get_connection()
+        cursor = conn.execute("""
+            UPDATE faceless_jobs
+            SET checkpoint = ?
+            WHERE job_id = ?
+        """, (checkpoint, job_id))
+        logger.info(f"[CHECKPOINT] Job {job_id} checkpoint updated to: {checkpoint}")
+        return cursor.rowcount > 0
+
+    def get_resumable_jobs(self) -> List[FacelessJobRecord]:
+        """
+        Get all jobs that failed but have progress that can be resumed.
+        These are jobs with checkpoint != 'none' and checkpoint != 'rendered' and status = 'failed'.
+        """
+        conn = get_connection()
+        cursor = conn.execute("""
+            SELECT * FROM faceless_jobs
+            WHERE status = 'failed'
+              AND checkpoint NOT IN ('none', 'rendered')
+            ORDER BY created_at DESC
+        """)
+        rows = cursor.fetchall()
+        return [self._row_to_record(row) for row in rows]
+
+    def reset_job_for_resume(self, job_id: str) -> bool:
+        """
+        Reset a failed job's status so it can be resumed.
+        Keeps the checkpoint and all generated content.
+        """
+        conn = get_connection()
+        cursor = conn.execute("""
+            UPDATE faceless_jobs
+            SET status = 'pending',
+                error = NULL,
+                progress_message = 'Resuming from checkpoint...'
+            WHERE job_id = ?
+        """, (job_id,))
+        logger.info(f"[RESUME] Job {job_id} reset for resume")
+        return cursor.rowcount > 0
+
     def update_job_script(
         self,
         job_id: str,
         script: Dict[str, Any],
         used_fallback: bool = False
     ) -> bool:
-        """Update job with generated script."""
+        """Update job with generated script and set checkpoint."""
         conn = get_connection()
         script_json = json.dumps(script, ensure_ascii=False)
         cursor = conn.execute("""
             UPDATE faceless_jobs
-            SET script_json = ?, used_fallback_script = ?
+            SET script_json = ?, used_fallback_script = ?, checkpoint = ?
             WHERE job_id = ?
-        """, (script_json, int(used_fallback), job_id))
+        """, (script_json, int(used_fallback), PipelineCheckpoint.SCRIPT_DONE.value, job_id))
+        logger.info(f"[CHECKPOINT] Job {job_id} script saved, checkpoint: script_done")
         return cursor.rowcount > 0
 
     def update_job_audio(
@@ -241,13 +312,14 @@ class FacelessJobsRepository:
         audio_path: str,
         audio_duration: float
     ) -> bool:
-        """Update job with generated audio."""
+        """Update job with generated audio and set checkpoint."""
         conn = get_connection()
         cursor = conn.execute("""
             UPDATE faceless_jobs
-            SET audio_path = ?, audio_duration = ?
+            SET audio_path = ?, audio_duration = ?, checkpoint = ?
             WHERE job_id = ?
-        """, (audio_path, audio_duration, job_id))
+        """, (audio_path, audio_duration, PipelineCheckpoint.AUDIO_DONE.value, job_id))
+        logger.info(f"[CHECKPOINT] Job {job_id} audio saved, checkpoint: audio_done")
         return cursor.rowcount > 0
 
     def update_job_visuals(
@@ -259,7 +331,7 @@ class FacelessJobsRepository:
         used_fallback: bool = False,
         api_limit_reached: bool = False
     ) -> bool:
-        """Update job with generated visuals."""
+        """Update job with generated visuals and set checkpoint."""
         conn = get_connection()
         cursor = conn.execute("""
             UPDATE faceless_jobs
@@ -267,7 +339,8 @@ class FacelessJobsRepository:
                 image_paths_json = ?,
                 clip_paths_json = ?,
                 used_fallback_visuals = ?,
-                api_limit_reached = ?
+                api_limit_reached = ?,
+                checkpoint = ?
             WHERE job_id = ?
         """, (
             json.dumps(visual_prompts, ensure_ascii=False),
@@ -275,18 +348,21 @@ class FacelessJobsRepository:
             json.dumps(clip_paths or [], ensure_ascii=False),
             int(used_fallback),
             int(api_limit_reached),
+            PipelineCheckpoint.IMAGES_DONE.value,
             job_id
         ))
+        logger.info(f"[CHECKPOINT] Job {job_id} images saved, checkpoint: images_done")
         return cursor.rowcount > 0
 
     def update_job_clips(self, job_id: str, clip_paths: List[str]) -> bool:
-        """Update job with animated clip paths."""
+        """Update job with animated clip paths and set checkpoint."""
         conn = get_connection()
         cursor = conn.execute("""
             UPDATE faceless_jobs
-            SET clip_paths_json = ?
+            SET clip_paths_json = ?, checkpoint = ?
             WHERE job_id = ?
-        """, (json.dumps(clip_paths, ensure_ascii=False), job_id))
+        """, (json.dumps(clip_paths, ensure_ascii=False), PipelineCheckpoint.CLIPS_DONE.value, job_id))
+        logger.info(f"[CHECKPOINT] Job {job_id} clips saved, checkpoint: clips_done")
         return cursor.rowcount > 0
 
     def complete_job(
@@ -295,7 +371,7 @@ class FacelessJobsRepository:
         output_path: str,
         status_details: str = ""
     ) -> bool:
-        """Mark job as completed with output path."""
+        """Mark job as completed with output path and final checkpoint."""
         conn = get_connection()
         now = datetime.utcnow().isoformat()
         cursor = conn.execute("""
@@ -305,10 +381,11 @@ class FacelessJobsRepository:
                 progress_message = 'Video ready!',
                 completed_at = ?,
                 output_path = ?,
-                status_details = ?
+                status_details = ?,
+                checkpoint = ?
             WHERE job_id = ?
-        """, (now, output_path, status_details, job_id))
-        logger.info(f"Completed faceless job: {job_id}")
+        """, (now, output_path, status_details, PipelineCheckpoint.RENDERED.value, job_id))
+        logger.info(f"[CHECKPOINT] Job {job_id} completed, checkpoint: rendered")
         return cursor.rowcount > 0
 
     def fail_job(self, job_id: str, error: str) -> bool:
@@ -411,6 +488,7 @@ class FacelessJobsRepository:
             width=row["width"],
             height=row["height"],
             subtitle_style=row["subtitle_style"],
+            art_style=row["art_style"] if "art_style" in row.keys() else "photorealism",
             script_json=row["script_json"],
             audio_path=row["audio_path"],
             audio_duration=row["audio_duration"],
@@ -422,7 +500,8 @@ class FacelessJobsRepository:
             used_fallback_script=bool(row["used_fallback_script"]),
             used_fallback_visuals=bool(row["used_fallback_visuals"]),
             api_limit_reached=bool(row["api_limit_reached"]),
-            status_details=row["status_details"] or ""
+            status_details=row["status_details"] or "",
+            checkpoint=row["checkpoint"] if "checkpoint" in row.keys() else "none"
         )
 
     # ═══════════════════════════════════════════════════════════════
@@ -501,7 +580,9 @@ class FacelessJobsRepository:
         segment_index: int,
         text: str = None,
         duration: float = None,
-        image_path: str = None
+        image_path: str = None,
+        visual_prompt: str = None,
+        emotion: str = None
     ) -> bool:
         """Update a specific segment (for editor changes)."""
         conn = get_connection()
@@ -520,6 +601,12 @@ class FacelessJobsRepository:
             params.append(image_path)
             updates.append("image_url = ?")
             params.append(self._path_to_url(image_path, job_id))
+        if visual_prompt is not None:
+            updates.append("visual_prompt = ?")
+            params.append(visual_prompt)
+        if emotion is not None:
+            updates.append("emotion = ?")
+            params.append(emotion)
 
         if not updates:
             return False
@@ -528,7 +615,27 @@ class FacelessJobsRepository:
         query = f"UPDATE video_segments SET {', '.join(updates)} WHERE job_id = ? AND segment_index = ?"
 
         cursor = conn.execute(query, params)
+        logger.info(f"Updated segment {segment_index} for job {job_id}: {updates}")
         return cursor.rowcount > 0
+
+    def update_segment_image(
+        self,
+        job_id: str,
+        segment_index: int,
+        image_path: str
+    ) -> bool:
+        """Update segment image path and URL."""
+        return self.update_segment(job_id, segment_index, image_path=image_path)
+
+    def get_job_audio_path(self, job_id: str) -> Optional[str]:
+        """Get the audio path for a job."""
+        job = self.get_job(job_id)
+        return job.audio_path if job else None
+
+    def get_job_output_path(self, job_id: str) -> Optional[str]:
+        """Get the output video path for a job."""
+        job = self.get_job(job_id)
+        return job.output_path if job else None
 
     def _row_to_segment(self, row) -> VideoSegmentRecord:
         """Convert database row to VideoSegmentRecord."""
@@ -568,6 +675,7 @@ class FacelessJobsRepository:
         """
         Get complete job data formatted for the video editor.
         Includes all segments with their images and metadata.
+        Falls back to reconstructing segments from script/image_paths if needed.
         """
         job = self.get_job(job_id)
         if not job:
@@ -583,10 +691,56 @@ class FacelessJobsRepository:
             except json.JSONDecodeError:
                 pass
 
+        # Parse image paths JSON
+        image_paths = []
+        if job.image_paths_json:
+            try:
+                image_paths = json.loads(job.image_paths_json)
+            except json.JSONDecodeError:
+                pass
+
         # Build video URL
         video_url = None
         if job.output_path and job.status == "completed":
             video_url = f"/data/faceless/{job_id}/final.mp4"
+
+        # If no segments in DB but we have script, reconstruct them
+        segment_list = []
+        if segments:
+            # Use segments from video_segments table
+            segment_list = [
+                {
+                    "index": seg.segment_index,
+                    "text": seg.text,
+                    "duration": seg.duration,
+                    "image_path": seg.image_path,
+                    "image_url": seg.image_url,
+                    "visual_prompt": seg.visual_prompt,
+                    "emotion": seg.emotion,
+                    "segment_type": seg.segment_type,
+                    "camera_direction": seg.camera_direction,
+                    "lighting_mood": seg.lighting_mood,
+                }
+                for seg in segments
+            ]
+        elif script and "segments" in script:
+            # Reconstruct from script and image_paths
+            for idx, seg in enumerate(script["segments"]):
+                img_path = image_paths[idx] if idx < len(image_paths) else ""
+                img_url = self._path_to_url(img_path, job_id) if img_path else ""
+
+                segment_list.append({
+                    "index": idx,
+                    "text": seg.get("text", ""),
+                    "duration": seg.get("duration", 5.0),
+                    "image_path": img_path,
+                    "image_url": img_url,
+                    "visual_prompt": seg.get("visual_prompt", ""),
+                    "emotion": seg.get("emotion", "neutral"),
+                    "segment_type": seg.get("segment_type", "content"),
+                    "camera_direction": seg.get("camera_direction", "static"),
+                    "lighting_mood": seg.get("lighting_mood", "cinematic"),
+                })
 
         return {
             "job_id": job.job_id,
@@ -608,23 +762,10 @@ class FacelessJobsRepository:
                 "width": job.width,
                 "height": job.height,
                 "subtitle_style": job.subtitle_style,
+                "art_style": job.art_style,
             },
-            "segments": [
-                {
-                    "index": seg.segment_index,
-                    "text": seg.text,
-                    "duration": seg.duration,
-                    "image_path": seg.image_path,
-                    "image_url": seg.image_url,
-                    "visual_prompt": seg.visual_prompt,
-                    "emotion": seg.emotion,
-                    "segment_type": seg.segment_type,
-                    "camera_direction": seg.camera_direction,
-                    "lighting_mood": seg.lighting_mood,
-                }
-                for seg in segments
-            ],
-            "segment_count": len(segments),
+            "segments": segment_list,
+            "segment_count": len(segment_list),
         }
 
     def to_api_response(self, record: FacelessJobRecord) -> Dict[str, Any]:
@@ -690,6 +831,7 @@ class FacelessJobsRepository:
                 "duration": record.duration,
                 "format": record.format,
                 "subtitle_style": record.subtitle_style,
+                "art_style": record.art_style,
             }
         }
 

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Faceless AI Studio{% endblock %}
+{% block title %}Faceless AI Студия{% endblock %}
 
 {% block head %}
 <style>
@@ -64,13 +64,13 @@
                     </svg>
                 </div>
                 <div>
-                    <h1 class="text-lg font-bold text-white">Faceless AI Studio</h1>
-                    <p class="text-xs text-dark-400">Auto-Pilot Video Generation</p>
+                    <h1 class="text-lg font-bold text-white">Faceless AI Студия</h1>
+                    <p class="text-xs text-dark-400">Автоматическая генерация видео</p>
                 </div>
             </div>
         </div>
         <div class="flex items-center gap-4">
-            <span class="text-sm text-dark-400">{{ credits }} credits</span>
+            <span class="text-sm text-dark-400">{{ credits }} кредитов</span>
         </div>
     </header>
 
@@ -79,62 +79,141 @@
         <!-- Left: Generator Form -->
         <div class="w-1/2 p-8 overflow-y-auto scrollbar-thin border-r border-white/5">
             <div class="max-w-lg mx-auto">
-                <!-- Step 1: Topic -->
+                <!-- ═══════════════════════════════════════════════════════════════ -->
+                <!-- БЛОК 1: КОНТЕНТ -->
+                <!-- ═══════════════════════════════════════════════════════════════ -->
                 <div id="step-topic" class="space-y-6">
-                    <div class="flex items-center gap-3 mb-6">
-                        <div class="step-dot w-8 h-8 bg-brand-500 rounded-full flex items-center justify-center text-white font-bold">1</div>
-                        <h2 class="text-xl font-bold text-white">Topic & Style</h2>
+                    <div class="flex items-center gap-3 mb-4">
+                        <div class="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center">
+                            <span class="text-white text-lg">📝</span>
+                        </div>
+                        <div>
+                            <h2 class="text-lg font-bold text-white">Контент</h2>
+                            <p class="text-xs text-dark-400">Тема, сценарий и стиль</p>
+                        </div>
                     </div>
 
+                    <!-- Тема видео -->
                     <div>
-                        <label class="block text-sm font-medium text-dark-300 mb-2">Video Topic</label>
-                        <input type="text" id="topic" placeholder="5 Life Hacks That Will Change Your Morning Routine"
+                        <label class="block text-sm font-medium text-dark-300 mb-2">Тема видео</label>
+                        <input type="text" id="topic" placeholder="5 лайфхаков, которые изменят ваше утро"
                                class="w-full px-4 py-4 bg-dark-800/50 border border-white/10 rounded-xl text-white placeholder-dark-500 focus:outline-none focus:border-brand-500 text-lg">
-                        <p class="text-xs text-dark-500 mt-2">Be specific - the AI will create a viral script from this</p>
+                        <p class="text-xs text-dark-500 mt-2">Будьте конкретны — ИИ создаст виральный сценарий на основе этой темы</p>
                     </div>
 
+                    <!-- Своя идея / черновик -->
+                    <div class="bg-dark-800/30 rounded-xl p-4 border border-white/5">
+                        <div class="flex items-center justify-between mb-3">
+                            <label class="text-sm font-medium text-dark-300 flex items-center gap-2">
+                                <span>✨</span> Своя идея / черновик
+                                <span class="text-[10px] text-dark-500 bg-dark-700 px-2 py-0.5 rounded">опционально</span>
+                            </label>
+                            <button type="button" onclick="Faceless.toggleCustomIdea()" class="text-xs text-brand-400 hover:text-brand-300 flex items-center gap-1">
+                                <span id="toggle-idea-text">Добавить</span>
+                                <svg id="toggle-idea-icon" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                                </svg>
+                            </button>
+                        </div>
+                        <div id="custom-idea-section" class="hidden space-y-4">
+                            <textarea id="custom_idea" rows="4" placeholder="Напишите свою идею или черновик сценария. ИИ доработает его, сохранив вашу суть..."
+                                      class="w-full px-4 py-3 bg-dark-900/50 border border-white/10 rounded-xl text-white placeholder-dark-500 focus:outline-none focus:border-brand-500 text-sm resize-none"></textarea>
+
+                            <!-- Режим обработки - красивые кнопки -->
+                            <div>
+                                <label class="block text-xs text-dark-400 mb-2">Режим обработки:</label>
+                                <div class="grid grid-cols-3 gap-2">
+                                    <button type="button" class="idea-mode-btn p-3 bg-dark-900/50 rounded-xl border-2 border-brand-500 bg-brand-500/10 text-center transition-all" data-mode="expand" onclick="Faceless.setIdeaMode('expand')">
+                                        <span class="text-lg mb-1 block">🚀</span>
+                                        <span class="text-xs font-medium text-white block">Развить</span>
+                                        <span class="text-[10px] text-dark-400 block mt-1">Полный сценарий</span>
+                                    </button>
+                                    <button type="button" class="idea-mode-btn p-3 bg-dark-900/50 rounded-xl border-2 border-white/10 text-center transition-all hover:border-brand-400" data-mode="polish" onclick="Faceless.setIdeaMode('polish')">
+                                        <span class="text-lg mb-1 block">✨</span>
+                                        <span class="text-xs font-medium text-white block">Улучшить</span>
+                                        <span class="text-[10px] text-dark-400 block mt-1">Сохранить суть</span>
+                                    </button>
+                                    <button type="button" class="idea-mode-btn p-3 bg-dark-900/50 rounded-xl border-2 border-white/10 text-center transition-all hover:border-brand-400" data-mode="strict" onclick="Faceless.setIdeaMode('strict')">
+                                        <span class="text-lg mb-1 block">📝</span>
+                                        <span class="text-xs font-medium text-white block">Как есть</span>
+                                        <span class="text-[10px] text-dark-400 block mt-1">Только формат</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <input type="hidden" id="idea_mode" value="expand">
+                        </div>
+                    </div>
+
+                    <!-- Стиль и Язык -->
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <label class="block text-sm font-medium text-dark-300 mb-2">Script Style</label>
+                            <label class="block text-sm font-medium text-dark-300 mb-2">Стиль сценария</label>
                             <select id="style" class="w-full px-4 py-3 bg-dark-800/50 border border-white/10 rounded-xl text-white focus:outline-none focus:border-brand-500">
-                                <option value="viral">Viral / Hook-driven</option>
-                                <option value="educational">Educational</option>
-                                <option value="storytelling">Storytelling</option>
-                                <option value="motivational">Motivational</option>
-                                <option value="documentary">Documentary</option>
+                                <option value="viral">🔥 Виральный</option>
+                                <option value="educational">📚 Обучающий</option>
+                                <option value="storytelling">📖 Сторителлинг</option>
+                                <option value="motivational">💪 Мотивационный</option>
+                                <option value="documentary">🎬 Документальный</option>
                             </select>
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-dark-300 mb-2">Language</label>
+                            <label class="block text-sm font-medium text-dark-300 mb-2">Язык</label>
                             <select id="language" class="w-full px-4 py-3 bg-dark-800/50 border border-white/10 rounded-xl text-white focus:outline-none focus:border-brand-500">
-                                <option value="ru">Russian</option>
-                                <option value="en">English</option>
+                                <option value="ru">🇷🇺 Русский</option>
+                                <option value="en">🇺🇸 English</option>
                             </select>
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-sm font-medium text-dark-300 mb-2">Voice</label>
-                            <select id="voice" class="w-full px-4 py-3 bg-dark-800/50 border border-white/10 rounded-xl text-white focus:outline-none focus:border-brand-500">
-                                <option value="ru-RU-DmitryNeural">Dmitry (Male, RU)</option>
-                                <option value="ru-RU-SvetlanaNeural">Svetlana (Female, RU)</option>
-                                <option value="en-US-GuyNeural">Guy (Male, EN)</option>
-                                <option value="en-US-JennyNeural">Jenny (Female, EN)</option>
-                            </select>
+                    <!-- ═══════════════════════════════════════════════════════════════ -->
+                    <!-- БЛОК 2: ВИЗУАЛ -->
+                    <!-- ═══════════════════════════════════════════════════════════════ -->
+                    <div class="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent my-6"></div>
+
+                    <div class="flex items-center gap-3 mb-4">
+                        <div class="w-10 h-10 bg-gradient-to-br from-cyan-500 to-blue-500 rounded-xl flex items-center justify-center">
+                            <span class="text-white text-lg">🎨</span>
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-dark-300 mb-2">Duration (seconds)</label>
-                            <input type="number" id="duration" value="60" min="15" max="180"
-                                   class="w-full px-4 py-3 bg-dark-800/50 border border-white/10 rounded-xl text-white focus:outline-none focus:border-brand-500">
+                            <h2 class="text-lg font-bold text-white">Визуал</h2>
+                            <p class="text-xs text-dark-400">Генератор, стиль и формат</p>
                         </div>
                     </div>
 
-                    <div class="h-px bg-white/5 my-6"></div>
+                    <!-- Генератор изображений -->
+                    <div>
+                        <label class="block text-sm font-medium text-dark-300 mb-3">Генератор изображений</label>
+                        <div class="grid grid-cols-2 gap-3">
+                            <button type="button" class="provider-btn p-4 bg-dark-800/50 rounded-xl border-2 border-brand-500 bg-brand-500/10 text-left transition-all" data-provider="dalle" onclick="Faceless.setImageProvider('dalle')">
+                                <div class="flex items-center gap-3 mb-2">
+                                    <div class="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg flex items-center justify-center">
+                                        <span class="text-white text-sm font-bold">D3</span>
+                                    </div>
+                                    <div>
+                                        <span class="text-sm text-white font-medium block">DALL-E 3</span>
+                                        <span class="text-[10px] text-dark-500">OpenAI</span>
+                                    </div>
+                                </div>
+                                <p class="text-[10px] text-dark-400">~$0.04/изобр • Высокое качество</p>
+                            </button>
+                            <button type="button" class="provider-btn p-4 bg-dark-800/50 rounded-xl border-2 border-white/10 text-left transition-all hover:border-brand-400" data-provider="nanobanana" onclick="Faceless.setImageProvider('nanobanana')">
+                                <div class="flex items-center gap-3 mb-2">
+                                    <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                                        <span class="text-white text-sm font-bold">G</span>
+                                    </div>
+                                    <div>
+                                        <span class="text-sm text-white font-medium block">Nano Banana</span>
+                                        <span class="text-[10px] text-dark-500">Google Gemini</span>
+                                    </div>
+                                </div>
+                                <p class="text-[10px] text-dark-400">~$0.039/изобр • Быстрый</p>
+                            </button>
+                        </div>
+                    </div>
 
                     <!-- Video Format -->
                     <div>
-                        <label class="block text-sm font-medium text-dark-300 mb-3">Video Format</label>
+                        <label class="block text-sm font-medium text-dark-300 mb-3">Формат видео</label>
                         <div class="grid grid-cols-3 gap-3">
                             <button class="format-btn px-4 py-6 bg-dark-800/50 rounded-xl border-2 border-brand-500 bg-brand-500/10 flex flex-col items-center gap-2" data-format="9:16">
                                 <div class="w-6 h-10 border-2 border-brand-400 rounded"></div>
@@ -156,37 +235,234 @@
 
                     <!-- Subtitle Style -->
                     <div>
-                        <label class="block text-sm font-medium text-dark-300 mb-3">Subtitle Style</label>
+                        <label class="block text-sm font-medium text-dark-300 mb-3">Стиль субтитров</label>
                         <div class="space-y-2">
                             <button class="subtitle-btn w-full p-4 bg-dark-800/50 rounded-xl border-2 border-brand-500 bg-brand-500/10 text-left flex items-center justify-between" data-style="hormozi">
                                 <div>
-                                    <span class="text-sm text-white font-bold">Hormozi Style</span>
-                                    <p class="text-xs text-dark-500">Yellow text, black outline, pop animation</p>
+                                    <span class="text-sm text-white font-bold">Стиль Hormozi</span>
+                                    <p class="text-xs text-dark-500">Жёлтый текст, чёрная обводка, анимация</p>
                                 </div>
-                                <span class="subtitle-demo text-yellow-400 text-lg">EXAMPLE</span>
+                                <span class="subtitle-demo text-yellow-400 text-lg">ПРИМЕР</span>
                             </button>
                             <button class="subtitle-btn w-full p-4 bg-dark-800/50 rounded-xl border-2 border-white/10 text-left flex items-center justify-between" data-style="clean">
                                 <div>
-                                    <span class="text-sm text-white font-medium">Clean</span>
-                                    <p class="text-xs text-dark-500">White text with shadow</p>
+                                    <span class="text-sm text-white font-medium">Чистый</span>
+                                    <p class="text-xs text-dark-500">Белый текст с тенью</p>
                                 </div>
-                                <span class="text-white text-lg shadow-lg">Example</span>
+                                <span class="text-white text-lg shadow-lg">Пример</span>
                             </button>
                             <button class="subtitle-btn w-full p-4 bg-dark-800/50 rounded-xl border-2 border-white/10 text-left flex items-center justify-between" data-style="neon">
                                 <div>
-                                    <span class="text-sm text-white font-medium">Neon</span>
-                                    <p class="text-xs text-dark-500">Glowing cyan effect</p>
+                                    <span class="text-sm text-white font-medium">Неон</span>
+                                    <p class="text-xs text-dark-500">Светящийся голубой эффект</p>
                                 </div>
-                                <span class="text-cyan-400 text-lg" style="text-shadow: 0 0 10px cyan">Example</span>
+                                <span class="text-cyan-400 text-lg" style="text-shadow: 0 0 10px cyan">Пример</span>
                             </button>
                         </div>
                     </div>
 
-                    <!-- Background Music -->
-                    <div class="flex items-center justify-between p-4 bg-dark-800/30 rounded-xl">
+                    <!-- Art Style Gallery -->
+                    <div>
+                        <label class="block text-sm font-medium text-dark-300 mb-3">Визуальный стиль (DALL-E)</label>
+                        <p class="text-xs text-dark-500 mb-3">Выберите художественный стиль для генерации изображений</p>
+                        <div class="art-styles-gallery flex gap-3 overflow-x-auto pb-3 scrollbar-thin" style="scroll-snap-type: x mandatory;">
+                            <!-- Photo Realism (default) -->
+                            <div class="art-style-card flex-shrink-0 cursor-pointer rounded-xl border-2 border-brand-500 bg-brand-500/10 overflow-hidden transition-all hover:scale-105" data-style="photorealism" onclick="Faceless.setArtStyle('photorealism')" style="width: 120px; scroll-snap-align: start;">
+                                <div class="aspect-square bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center">
+                                    <svg class="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path>
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                    </svg>
+                                </div>
+                                <div class="p-2 text-center">
+                                    <span class="text-xs font-medium text-white">Фотореализм</span>
+                                </div>
+                            </div>
+
+                            <!-- Anime -->
+                            <div class="art-style-card flex-shrink-0 cursor-pointer rounded-xl border-2 border-white/10 overflow-hidden transition-all hover:scale-105 hover:border-brand-400" data-style="anime" onclick="Faceless.setArtStyle('anime')" style="width: 120px; scroll-snap-align: start;">
+                                <div class="aspect-square bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center">
+                                    <span class="text-3xl">🎌</span>
+                                </div>
+                                <div class="p-2 text-center">
+                                    <span class="text-xs font-medium text-white">Аниме</span>
+                                </div>
+                            </div>
+
+                            <!-- Studio Ghibli -->
+                            <div class="art-style-card flex-shrink-0 cursor-pointer rounded-xl border-2 border-white/10 overflow-hidden transition-all hover:scale-105 hover:border-brand-400" data-style="ghibli" onclick="Faceless.setArtStyle('ghibli')" style="width: 120px; scroll-snap-align: start;">
+                                <div class="aspect-square bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center">
+                                    <span class="text-3xl">🏯</span>
+                                </div>
+                                <div class="p-2 text-center">
+                                    <span class="text-xs font-medium text-white">Ghibli</span>
+                                </div>
+                            </div>
+
+                            <!-- Disney Toon -->
+                            <div class="art-style-card flex-shrink-0 cursor-pointer rounded-xl border-2 border-white/10 overflow-hidden transition-all hover:scale-105 hover:border-brand-400" data-style="disney" onclick="Faceless.setArtStyle('disney')" style="width: 120px; scroll-snap-align: start;">
+                                <div class="aspect-square bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
+                                    <span class="text-3xl">🏰</span>
+                                </div>
+                                <div class="p-2 text-center">
+                                    <span class="text-xs font-medium text-white">Disney</span>
+                                </div>
+                            </div>
+
+                            <!-- Comic Book -->
+                            <div class="art-style-card flex-shrink-0 cursor-pointer rounded-xl border-2 border-white/10 overflow-hidden transition-all hover:scale-105 hover:border-brand-400" data-style="comic" onclick="Faceless.setArtStyle('comic')" style="width: 120px; scroll-snap-align: start;">
+                                <div class="aspect-square bg-gradient-to-br from-red-500 to-yellow-500 flex items-center justify-center">
+                                    <span class="text-3xl">💥</span>
+                                </div>
+                                <div class="p-2 text-center">
+                                    <span class="text-xs font-medium text-white">Комикс</span>
+                                </div>
+                            </div>
+
+                            <!-- Minecraft -->
+                            <div class="art-style-card flex-shrink-0 cursor-pointer rounded-xl border-2 border-white/10 overflow-hidden transition-all hover:scale-105 hover:border-brand-400" data-style="minecraft" onclick="Faceless.setArtStyle('minecraft')" style="width: 120px; scroll-snap-align: start;">
+                                <div class="aspect-square bg-gradient-to-br from-green-600 to-emerald-800 flex items-center justify-center">
+                                    <span class="text-3xl">⛏️</span>
+                                </div>
+                                <div class="p-2 text-center">
+                                    <span class="text-xs font-medium text-white">Minecraft</span>
+                                </div>
+                            </div>
+
+                            <!-- LEGO -->
+                            <div class="art-style-card flex-shrink-0 cursor-pointer rounded-xl border-2 border-white/10 overflow-hidden transition-all hover:scale-105 hover:border-brand-400" data-style="lego" onclick="Faceless.setArtStyle('lego')" style="width: 120px; scroll-snap-align: start;">
+                                <div class="aspect-square bg-gradient-to-br from-yellow-400 to-red-500 flex items-center justify-center">
+                                    <span class="text-3xl">🧱</span>
+                                </div>
+                                <div class="p-2 text-center">
+                                    <span class="text-xs font-medium text-white">LEGO</span>
+                                </div>
+                            </div>
+
+                            <!-- GTA V -->
+                            <div class="art-style-card flex-shrink-0 cursor-pointer rounded-xl border-2 border-white/10 overflow-hidden transition-all hover:scale-105 hover:border-brand-400" data-style="gtav" onclick="Faceless.setArtStyle('gtav')" style="width: 120px; scroll-snap-align: start;">
+                                <div class="aspect-square bg-gradient-to-br from-orange-500 to-pink-600 flex items-center justify-center">
+                                    <span class="text-3xl">🚗</span>
+                                </div>
+                                <div class="p-2 text-center">
+                                    <span class="text-xs font-medium text-white">GTA V</span>
+                                </div>
+                            </div>
+
+                            <!-- Watercolor -->
+                            <div class="art-style-card flex-shrink-0 cursor-pointer rounded-xl border-2 border-white/10 overflow-hidden transition-all hover:scale-105 hover:border-brand-400" data-style="watercolor" onclick="Faceless.setArtStyle('watercolor')" style="width: 120px; scroll-snap-align: start;">
+                                <div class="aspect-square bg-gradient-to-br from-cyan-300 to-blue-400 flex items-center justify-center">
+                                    <span class="text-3xl">🎨</span>
+                                </div>
+                                <div class="p-2 text-center">
+                                    <span class="text-xs font-medium text-white">Акварель</span>
+                                </div>
+                            </div>
+
+                            <!-- Expressionism -->
+                            <div class="art-style-card flex-shrink-0 cursor-pointer rounded-xl border-2 border-white/10 overflow-hidden transition-all hover:scale-105 hover:border-brand-400" data-style="expressionism" onclick="Faceless.setArtStyle('expressionism')" style="width: 120px; scroll-snap-align: start;">
+                                <div class="aspect-square bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center">
+                                    <span class="text-3xl">🌀</span>
+                                </div>
+                                <div class="p-2 text-center">
+                                    <span class="text-xs font-medium text-white">Экспрессия</span>
+                                </div>
+                            </div>
+
+                            <!-- Charcoal -->
+                            <div class="art-style-card flex-shrink-0 cursor-pointer rounded-xl border-2 border-white/10 overflow-hidden transition-all hover:scale-105 hover:border-brand-400" data-style="charcoal" onclick="Faceless.setArtStyle('charcoal')" style="width: 120px; scroll-snap-align: start;">
+                                <div class="aspect-square bg-gradient-to-br from-gray-600 to-gray-900 flex items-center justify-center">
+                                    <span class="text-3xl">✏️</span>
+                                </div>
+                                <div class="p-2 text-center">
+                                    <span class="text-xs font-medium text-white">Уголь</span>
+                                </div>
+                            </div>
+
+                            <!-- Pixel Art -->
+                            <div class="art-style-card flex-shrink-0 cursor-pointer rounded-xl border-2 border-white/10 overflow-hidden transition-all hover:scale-105 hover:border-brand-400" data-style="pixel" onclick="Faceless.setArtStyle('pixel')" style="width: 120px; scroll-snap-align: start;">
+                                <div class="aspect-square bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+                                    <span class="text-3xl">👾</span>
+                                </div>
+                                <div class="p-2 text-center">
+                                    <span class="text-xs font-medium text-white">Пиксель</span>
+                                </div>
+                            </div>
+
+                            <!-- Creepy Toon -->
+                            <div class="art-style-card flex-shrink-0 cursor-pointer rounded-xl border-2 border-white/10 overflow-hidden transition-all hover:scale-105 hover:border-brand-400" data-style="creepy" onclick="Faceless.setArtStyle('creepy')" style="width: 120px; scroll-snap-align: start;">
+                                <div class="aspect-square bg-gradient-to-br from-gray-800 to-red-900 flex items-center justify-center">
+                                    <span class="text-3xl">👻</span>
+                                </div>
+                                <div class="p-2 text-center">
+                                    <span class="text-xs font-medium text-white">Жуткий</span>
+                                </div>
+                            </div>
+
+                            <!-- Children's Book -->
+                            <div class="art-style-card flex-shrink-0 cursor-pointer rounded-xl border-2 border-white/10 overflow-hidden transition-all hover:scale-105 hover:border-brand-400" data-style="childrens" onclick="Faceless.setArtStyle('childrens')" style="width: 120px; scroll-snap-align: start;">
+                                <div class="aspect-square bg-gradient-to-br from-pink-300 to-yellow-300 flex items-center justify-center">
+                                    <span class="text-3xl">📚</span>
+                                </div>
+                                <div class="p-2 text-center">
+                                    <span class="text-xs font-medium text-white">Детская</span>
+                                </div>
+                            </div>
+                        </div>
+                        <p class="text-[10px] text-dark-600 mt-1">← Прокрутите для просмотра всех стилей →</p>
+                    </div>
+
+                    <!-- ═══════════════════════════════════════════════════════════════ -->
+                    <!-- БЛОК 3: АУДИО -->
+                    <!-- ═══════════════════════════════════════════════════════════════ -->
+                    <div class="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent my-6"></div>
+
+                    <div class="flex items-center gap-3 mb-4">
+                        <div class="w-10 h-10 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center">
+                            <span class="text-white text-lg">🎙️</span>
+                        </div>
                         <div>
-                            <span class="text-sm text-white font-medium">Background Music</span>
-                            <p class="text-xs text-dark-500">Add royalty-free background music</p>
+                            <h2 class="text-lg font-bold text-white">Аудио</h2>
+                            <p class="text-xs text-dark-400">Голос, длительность и музыка</p>
+                        </div>
+                    </div>
+
+                    <!-- Голос и Длительность -->
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-dark-300 mb-2">Голос озвучки</label>
+                            <select id="voice" class="w-full px-4 py-3 bg-dark-800/50 border border-white/10 rounded-xl text-white focus:outline-none focus:border-brand-500">
+                                <option value="ru-RU-DmitryNeural">🎤 Дмитрий (Муж, RU)</option>
+                                <option value="ru-RU-SvetlanaNeural">🎤 Светлана (Жен, RU)</option>
+                                <option value="en-US-GuyNeural">🎤 Guy (Муж, EN)</option>
+                                <option value="en-US-JennyNeural">🎤 Jenny (Жен, EN)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-dark-300 mb-2">Длительность</label>
+                            <div class="flex gap-2">
+                                <button type="button" class="duration-btn flex-1 px-3 py-3 bg-dark-800/50 border-2 border-white/10 rounded-xl text-white font-medium transition-all hover:border-brand-400" data-duration="30" onclick="Faceless.setDuration(30)">
+                                    30с
+                                </button>
+                                <button type="button" class="duration-btn flex-1 px-3 py-3 bg-dark-800/50 border-2 border-brand-500 bg-brand-500/10 rounded-xl text-white font-medium transition-all" data-duration="60" onclick="Faceless.setDuration(60)">
+                                    60с
+                                </button>
+                                <button type="button" class="duration-btn flex-1 px-3 py-3 bg-dark-800/50 border-2 border-white/10 rounded-xl text-white font-medium transition-all hover:border-brand-400" data-duration="90" onclick="Faceless.setDuration(90)">
+                                    90с
+                                </button>
+                            </div>
+                            <input type="hidden" id="duration" value="60">
+                        </div>
+                    </div>
+
+                    <!-- Фоновая музыка -->
+                    <div class="flex items-center justify-between p-4 bg-dark-800/30 rounded-xl">
+                        <div class="flex items-center gap-3">
+                            <span class="text-xl">🎵</span>
+                            <div>
+                                <span class="text-sm text-white font-medium">Фоновая музыка</span>
+                                <p class="text-xs text-dark-500">Royalty-free музыка</p>
+                            </div>
                         </div>
                         <label class="relative inline-flex items-center cursor-pointer">
                             <input type="checkbox" id="bg-music" checked class="sr-only peer">
@@ -200,7 +476,7 @@
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"></path>
                         </svg>
-                        Generate Faceless Video
+                        Генерировать видео
                     </button>
                 </div>
             </div>
@@ -228,8 +504,8 @@
                         </div>
                     </div>
 
-                    <h3 class="text-xl font-bold text-white mb-2">Generating Video</h3>
-                    <p id="progress-message" class="text-dark-400 mb-6">Initializing...</p>
+                    <h3 class="text-xl font-bold text-white mb-2">Генерация видео</h3>
+                    <p id="progress-message" class="text-dark-400 mb-6">Инициализация...</p>
 
                     <!-- Steps -->
                     <div class="flex justify-center gap-2 mb-6">
@@ -240,7 +516,7 @@
                     </div>
 
                     <button onclick="Faceless.cancel()" class="text-sm text-dark-400 hover:text-white transition-colors">
-                        Cancel
+                        Отмена
                     </button>
                 </div>
             </div>
@@ -252,16 +528,16 @@
                         <video id="result-video" class="w-full h-full object-contain" controls></video>
                     </div>
                     <div class="p-4 space-y-3">
-                        <h3 id="result-title" class="text-lg font-bold text-white">Video Title</h3>
+                        <h3 id="result-title" class="text-lg font-bold text-white">Название видео</h3>
                         <div class="flex gap-3">
                             <button onclick="Faceless.download()" class="flex-1 px-4 py-3 bg-gradient-to-r from-brand-600 to-indigo-600 text-white font-semibold rounded-xl flex items-center justify-center gap-2">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
                                 </svg>
-                                Download MP4
+                                Скачать MP4
                             </button>
                             <button onclick="Faceless.openEditor()" class="px-4 py-3 bg-white/5 hover:bg-white/10 text-white font-medium rounded-xl border border-white/10">
-                                Edit
+                                Редактировать
                             </button>
                         </div>
                     </div>
@@ -275,27 +551,27 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
                     </svg>
                 </div>
-                <h3 class="text-xl font-bold text-white mb-2">Your Video Preview</h3>
-                <p class="text-dark-400 mb-8">Enter a topic and click Generate to create your faceless video</p>
+                <h3 class="text-xl font-bold text-white mb-2">Предпросмотр видео</h3>
+                <p class="text-dark-400 mb-8">Введите тему и нажмите «Генерировать», чтобы создать видео</p>
 
                 <div class="bg-dark-800/30 rounded-xl p-4 text-left">
-                    <h4 class="text-sm font-semibold text-white mb-3">How it works:</h4>
+                    <h4 class="text-sm font-semibold text-white mb-3">Как это работает:</h4>
                     <div class="space-y-2 text-sm text-dark-400">
                         <div class="flex items-center gap-2">
                             <span class="w-5 h-5 bg-brand-500/20 text-brand-400 rounded-full flex items-center justify-center text-xs font-bold">1</span>
-                            <span>AI generates a viral script</span>
+                            <span>ИИ создаёт виральный сценарий</span>
                         </div>
                         <div class="flex items-center gap-2">
                             <span class="w-5 h-5 bg-brand-500/20 text-brand-400 rounded-full flex items-center justify-center text-xs font-bold">2</span>
-                            <span>Text-to-speech creates narration</span>
+                            <span>Озвучка генерируется автоматически</span>
                         </div>
                         <div class="flex items-center gap-2">
                             <span class="w-5 h-5 bg-brand-500/20 text-brand-400 rounded-full flex items-center justify-center text-xs font-bold">3</span>
-                            <span>Stock footage is matched automatically</span>
+                            <span>Визуальный контент подбирается под сценарий</span>
                         </div>
                         <div class="flex items-center gap-2">
                             <span class="w-5 h-5 bg-brand-500/20 text-brand-400 rounded-full flex items-center justify-center text-xs font-bold">4</span>
-                            <span>Final video with subtitles rendered</span>
+                            <span>Финальное видео рендерится с субтитрами</span>
                         </div>
                     </div>
                 </div>
@@ -303,7 +579,7 @@
 
             <!-- Recent Jobs -->
             <div id="recent-jobs" class="max-w-md mx-auto mt-8">
-                <h3 class="text-sm font-semibold text-dark-400 uppercase tracking-wider mb-4">Recent Jobs</h3>
+                <h3 class="text-sm font-semibold text-dark-400 uppercase tracking-wider mb-4">Последние задания</h3>
                 <div id="jobs-list" class="space-y-3">
                     <!-- Jobs will be rendered here -->
                 </div>
@@ -320,15 +596,92 @@ const Faceless = {
     pollInterval: null,
     settings: {
         format: '9:16',
-        subtitleStyle: 'hormozi'
+        subtitleStyle: 'hormozi',
+        artStyle: 'photorealism',
+        imageProvider: 'dalle',
+        ideaMode: 'expand'
+    },
+
+    setImageProvider(provider) {
+        this.settings.imageProvider = provider;
+        document.querySelectorAll('.provider-btn').forEach(btn => {
+            if (btn.dataset.provider === provider) {
+                btn.classList.add('border-brand-500', 'bg-brand-500/10');
+                btn.classList.remove('border-white/10');
+            } else {
+                btn.classList.remove('border-brand-500', 'bg-brand-500/10');
+                btn.classList.add('border-white/10');
+            }
+        });
+    },
+
+    setIdeaMode(mode) {
+        this.settings.ideaMode = mode;
+        document.getElementById('idea_mode').value = mode;
+        document.querySelectorAll('.idea-mode-btn').forEach(btn => {
+            if (btn.dataset.mode === mode) {
+                btn.classList.add('border-brand-500', 'bg-brand-500/10');
+                btn.classList.remove('border-white/10');
+            } else {
+                btn.classList.remove('border-brand-500', 'bg-brand-500/10');
+                btn.classList.add('border-white/10');
+            }
+        });
+    },
+
+    toggleCustomIdea() {
+        const section = document.getElementById('custom-idea-section');
+        const toggleText = document.getElementById('toggle-idea-text');
+        const toggleIcon = document.getElementById('toggle-idea-icon');
+        if (section.classList.contains('hidden')) {
+            section.classList.remove('hidden');
+            toggleText.textContent = 'Скрыть';
+            toggleIcon.style.transform = 'rotate(180deg)';
+        } else {
+            section.classList.add('hidden');
+            toggleText.textContent = 'Добавить';
+            toggleIcon.style.transform = 'rotate(0deg)';
+            document.getElementById('custom_idea').value = '';
+        }
+    },
+
+    setArtStyle(style) {
+        this.settings.artStyle = style;
+        document.querySelectorAll('.art-style-card').forEach(card => {
+            if (card.dataset.style === style) {
+                card.classList.add('border-brand-500', 'bg-brand-500/10');
+                card.classList.remove('border-white/10');
+            } else {
+                card.classList.remove('border-brand-500', 'bg-brand-500/10');
+                card.classList.add('border-white/10');
+            }
+        });
+    },
+
+    setDuration(seconds) {
+        document.getElementById('duration').value = seconds;
+        document.querySelectorAll('.duration-btn').forEach(btn => {
+            const btnDuration = parseInt(btn.dataset.duration);
+            if (btnDuration === seconds) {
+                btn.classList.add('border-brand-500', 'bg-brand-500/10');
+                btn.classList.remove('border-white/10');
+            } else {
+                btn.classList.remove('border-brand-500', 'bg-brand-500/10');
+                btn.classList.add('border-white/10');
+            }
+        });
     },
 
     async generate() {
         const topic = document.getElementById('topic').value.trim();
         if (!topic) {
-            App.showToast('Please enter a topic', 'error');
+            App.showToast('Пожалуйста, введите тему', 'error');
             return;
         }
+
+        // Get custom idea if provided
+        const customIdea = document.getElementById('custom_idea')?.value?.trim() || null;
+        const ideaMode = document.getElementById('idea_mode')?.value || 'expand';
 
         const params = {
             topic,
@@ -338,9 +691,17 @@ const Faceless = {
             duration: parseInt(document.getElementById('duration').value),
             format: this.settings.format,
             subtitle_style: this.settings.subtitleStyle,
+            art_style: this.settings.artStyle,
             background_music: document.getElementById('bg-music').checked,
-            music_volume: 0.2
+            music_volume: 0.2,
+            image_provider: this.settings.imageProvider
         };
+
+        // Add custom idea if provided
+        if (customIdea) {
+            params.custom_idea = customIdea;
+            params.idea_mode = ideaMode;
+        }
 
         // Show progress
         document.getElementById('empty-state').classList.add('hidden');
@@ -356,14 +717,25 @@ const Faceless = {
 
             const result = await response.json();
             if (!response.ok) {
-                throw new Error(result.detail || 'Generation failed');
+                // Handle error - detail can be string or object
+                let errorMsg = 'Ошибка генерации';
+                if (result.detail) {
+                    if (typeof result.detail === 'string') {
+                        errorMsg = result.detail;
+                    } else if (result.detail.reason) {
+                        errorMsg = result.detail.reason;
+                    } else if (result.detail.error) {
+                        errorMsg = result.detail.error;
+                    }
+                }
+                throw new Error(errorMsg);
             }
 
             this.currentJobId = result.job_id;
             this.startPolling();
 
         } catch (e) {
-            App.showToast('Error: ' + e.message, 'error');
+            App.showToast('Ошибка: ' + e.message, 'error');
             this.showEmptyState();
         }
     },
@@ -383,7 +755,7 @@ const Faceless = {
                     this.showResult(status);
                 } else if (status.status === 'failed') {
                     clearInterval(this.pollInterval);
-                    App.showToast('Error: ' + (status.error || 'Generation failed'), 'error');
+                    App.showToast('Ошибка: ' + (status.error || 'Генерация не удалась'), 'error');
                     this.showEmptyState();
                 }
             } catch (e) {
@@ -434,7 +806,7 @@ const Faceless = {
 
         document.getElementById('result-title').textContent = status.script?.title || status.topic;
 
-        App.showToast('Video generated successfully!');
+        App.showToast('Видео успешно сгенерировано!');
         this.loadRecentJobs();
     },
 
@@ -463,25 +835,48 @@ const Faceless = {
 
     async loadRecentJobs() {
         try {
-            const response = await fetch('/api/faceless/jobs?limit=5');
-            const jobs = await response.json();
+            const response = await fetch('/api/faceless/recent?limit=10');
+            const data = await response.json();
+            const jobs = data.jobs || [];
 
             const list = document.getElementById('jobs-list');
             if (!jobs.length) {
-                list.innerHTML = '<p class="text-sm text-dark-500">No recent jobs</p>';
+                list.innerHTML = '<p class="text-sm text-dark-500">Нет недавних заданий</p>';
                 return;
             }
 
             list.innerHTML = jobs.map(job => `
-                <div class="job-card glass rounded-xl p-4 cursor-pointer" onclick="Faceless.loadJob('${job.job_id}')">
+                <div class="job-card glass rounded-xl p-4">
                     <div class="flex items-center justify-between mb-2">
                         <span class="text-sm font-medium text-white truncate flex-1 mr-2">${job.topic}</span>
                         <span class="px-2 py-0.5 rounded text-xs ${this.getStatusClass(job.status)}">${job.status}</span>
                     </div>
-                    <div class="flex items-center justify-between text-xs text-dark-500">
+                    <div class="flex items-center justify-between text-xs text-dark-500 mb-3">
                         <span>${this.formatDate(job.created_at)}</span>
-                        ${job.status === 'completed' ? '<span class="text-green-400">Ready</span>' : ''}
+                        ${job.status === 'completed' ? '<span class="text-green-400">Готово</span>' : ''}
                     </div>
+                    ${job.status === 'completed' ? `
+                        <div class="flex gap-2">
+                            <button onclick="Faceless.loadJob('${job.job_id}')" class="flex-1 px-3 py-1.5 bg-white/5 hover:bg-white/10 text-white text-xs font-medium rounded-lg flex items-center justify-center gap-1">
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                                Просмотр
+                            </button>
+                            <button onclick="Faceless.editJob('${job.job_id}')" class="flex-1 px-3 py-1.5 bg-brand-600/20 hover:bg-brand-600/30 text-brand-400 text-xs font-medium rounded-lg flex items-center justify-center gap-1">
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                                </svg>
+                                Редактировать
+                            </button>
+                            <button onclick="Faceless.downloadJob('${job.job_id}')" class="px-3 py-1.5 bg-green-600/20 hover:bg-green-600/30 text-green-400 text-xs font-medium rounded-lg flex items-center justify-center">
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    ` : ''}
                 </div>
             `).join('');
 
@@ -501,7 +896,7 @@ const Faceless = {
 
     formatDate(isoString) {
         const date = new Date(isoString);
-        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        return date.toLocaleDateString('ru-RU', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     },
 
     loadJob(jobId) {
@@ -512,6 +907,16 @@ const Faceless = {
 
         const video = document.getElementById('result-video');
         video.src = `/api/faceless/download/${jobId}`;
+    },
+
+    // Open the editor with this job's segments
+    editJob(jobId) {
+        window.location.href = `/app/pro-editor?job_id=${jobId}`;
+    },
+
+    // Download the video file
+    downloadJob(jobId) {
+        window.open(`/api/faceless/download/${jobId}`, '_blank');
     }
 };
 

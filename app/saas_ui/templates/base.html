@@ -8,6 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -48,6 +49,7 @@
     </script>
     <style>
         * { font-family: 'Inter', system-ui, sans-serif; }
+        [x-cloak] { display: none !important; }
 
         @keyframes spin { to { transform: rotate(360deg); } }
         .animate-spin { animation: spin 1s linear infinite; }
@@ -117,6 +119,22 @@
                     </div>
                     <span class="text-lg font-bold text-white">AI Studio</span>
                 </a>
+
+                <!-- Navigation -->
+                <nav class="hidden md:flex items-center gap-1 ml-8">
+                    <a href="/app/faceless" class="px-3 py-1.5 text-sm text-dark-300 hover:text-white hover:bg-white/5 rounded-lg transition">
+                        Faceless AI
+                    </a>
+                    <a href="/app/musicvideo" class="px-3 py-1.5 text-sm text-dark-300 hover:text-white hover:bg-white/5 rounded-lg transition">
+                        Music Video
+                    </a>
+                    <a href="/app/shorts" class="px-3 py-1.5 text-sm text-dark-300 hover:text-white hover:bg-white/5 rounded-lg transition">
+                        Shorts
+                    </a>
+                    <a href="/app/portraits" class="px-3 py-1.5 text-sm text-dark-300 hover:text-white hover:bg-white/5 rounded-lg transition">
+                        Portraits
+                    </a>
+                </nav>
 
                 <!-- Right side -->
                 <div class="flex items-center gap-3">

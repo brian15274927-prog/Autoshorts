@@ -102,52 +102,73 @@ class KenBurnsService:
     ) -> str:
         """
         Generate FFmpeg zoompan filter for Ken Burns effect.
-        Uses simpler expressions that work reliably on Windows.
+        STABILIZED: Reduced zoom factors and strictly linear interpolation
+        to eliminate jitter and handheld camera shake.
         """
         total_frames = int(duration * self.fps)
 
+        # STABILIZATION: Use very gentle zoom increments for smooth motion
+        # Max zoom reduced from 1.5 to 1.12 for cinematic smoothness
+        zoom_increment = 0.12 / total_frames  # Exactly 12% zoom over duration
+        pan_distance = 0.08  # Reduced from 0.3 to 0.08 for subtle pan
+
         if effect == KenBurnsEffect.ZOOM_IN:
-            zoom_expr = "min(zoom+0.0015,1.5)"
+            # Gentle zoom in - strictly linear, centered
+            zoom_expr = f"1+on*{zoom_increment}"
             x_expr = "iw/2-(iw/zoom/2)"
             y_expr = "ih/2-(ih/zoom/2)"
 
         elif effect == KenBurnsEffect.ZOOM_OUT:
-            zoom_expr = "if(lte(zoom,1.0),1.5,max(1.001,zoom-0.0015))"
+            # Gentle zoom out - start at 1.12, end at 1.0
+            zoom_expr = f"1.12-on*{zoom_increment}"
             x_expr = "iw/2-(iw/zoom/2)"
             y_expr = "ih/2-(ih/zoom/2)"
 
         elif effect == KenBurnsEffect.PAN_LEFT:
-            zoom_expr = "1.3"
-            x_expr = f"max(0,iw*0.3-on*{0.3/total_frames}*iw)"
+            # Subtle pan left with slight zoom for depth
+            zoom_expr = "1.08"
+            pan_per_frame = pan_distance / total_frames
+            x_expr = f"iw*{pan_distance}-on*{pan_per_frame}*iw"
             y_expr = "ih/2-(ih/zoom/2)"
 
         elif effect == KenBurnsEffect.PAN_RIGHT:
-            zoom_expr = "1.3"
-            x_expr = f"min(iw*0.3,on*{0.3/total_frames}*iw)"
+            # Subtle pan right with slight zoom for depth
+            zoom_expr = "1.08"
+            pan_per_frame = pan_distance / total_frames
+            x_expr = f"on*{pan_per_frame}*iw"
             y_expr = "ih/2-(ih/zoom/2)"
 
         elif effect == KenBurnsEffect.PAN_UP:
-            zoom_expr = "1.3"
+            # Subtle pan up - good for vertical video
+            zoom_expr = "1.08"
+            pan_per_frame = pan_distance / total_frames
             x_expr = "iw/2-(iw/zoom/2)"
-            y_expr = f"max(0,ih*0.3-on*{0.3/total_frames}*ih)"
+            y_expr = f"ih*{pan_distance}-on*{pan_per_frame}*ih"
 
         elif effect == KenBurnsEffect.PAN_DOWN:
-            zoom_expr = "1.3"
+            # Subtle pan down - good for vertical video
+            zoom_expr = "1.08"
+            pan_per_frame = pan_distance / total_frames
             x_expr = "iw/2-(iw/zoom/2)"
-            y_expr = f"min(ih*0.3,on*{0.3/total_frames}*ih)"
+            y_expr = f"on*{pan_per_frame}*ih"
 
         elif effect == KenBurnsEffect.ZOOM_IN_PAN_RIGHT:
-            zoom_expr = "min(zoom+0.001,1.4)"
-            x_expr = f"min(iw*0.2,on*{0.2/total_frames}*iw)"
+            # Combined effect - very subtle for stability
+            zoom_expr = f"1+on*{zoom_increment * 0.8}"
+            pan_per_frame = (pan_distance * 0.6) / total_frames
+            x_expr = f"on*{pan_per_frame}*iw"
             y_expr = "ih/2-(ih/zoom/2)"
 
         elif effect == KenBurnsEffect.ZOOM_OUT_PAN_LEFT:
-            zoom_expr = "if(lte(zoom,1.0),1.4,max(1.001,zoom-0.001))"
-            x_expr = f"max(0,iw*0.2-on*{0.2/total_frames}*iw)"
+            # Combined effect - very subtle for stability
+            zoom_expr = f"1.10-on*{zoom_increment * 0.8}"
+            pan_per_frame = (pan_distance * 0.6) / total_frames
+            x_expr = f"iw*{pan_distance*0.6}-on*{pan_per_frame}*iw"
             y_expr = "ih/2-(ih/zoom/2)"
 
         else:
-            zoom_expr = "min(zoom+0.0015,1.5)"
+            # Default: gentle zoom in
+            zoom_expr = f"1+on*{zoom_increment}"
             x_expr = "iw/2-(iw/zoom/2)"
             y_expr = "ih/2-(ih/zoom/2)"
 

@@ -6,11 +6,12 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from .service import YouTubeShortsService
+from app.persistence.youtube_jobs_repo import get_youtube_jobs_repository
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/youtube-shorts", tags=["youtube-shorts"])
@@ -18,8 +19,8 @@ router = APIRouter(prefix="/api/youtube-shorts", tags=["youtube-shorts"])
 # Service instance
 shorts_service = YouTubeShortsService()
 
-# In-memory job status storage
-_job_status = {}
+# Get repository for database persistence
+youtube_jobs_repo = get_youtube_jobs_repository()
 
 
 class AnalyzeRequest(BaseModel):
@@ -87,7 +88,8 @@ async def _run_analysis(
 ):
     """Background task to run analysis with Director AI."""
     try:
-        _job_status[job_id] = {"status": "processing", "progress": "Загрузка видео с YouTube..."}
+        # Update status in database
+        youtube_jobs_repo.update_job_processing(job_id, "Загрузка видео с YouTube...")
 
         # Run analysis with parameters
         result = await shorts_service.analyze_youtube_url(
@@ -99,32 +101,34 @@ async def _run_analysis(
         )
 
         # Store format settings with result for later use in render
-        result["format_settings"] = {
+        format_settings = {
             "format": output_format,
             "width": output_width,
             "height": output_height,
             "enable_broll": enable_broll,
             "broll_source": broll_source
         }
+        result["format_settings"] = format_settings
 
         # Add AI reasoning to each clip if not present
         for clip in result.get("clips", []):
             if "reason" not in clip and "ai_reasoning" not in clip:
                 clip["ai_reasoning"] = _generate_ai_reasoning(clip, goal)
 
-        _job_status[job_id] = {
-            "status": "completed",
-            "progress": "Анализ завершён",
-            "result": result
-        }
+        # Save to database
+        youtube_jobs_repo.complete_job(
+            job_id=job_id,
+            video_duration=result.get("video_duration", 0),
+            video_path=result.get("video_path", ""),
+            clips=result.get("clips", []),
+            format_settings=format_settings
+        )
+
+        logger.info(f"YouTube analysis completed for job {job_id}: {len(result.get('clips', []))} clips found")
 
     except Exception as e:
         logger.error(f"Analysis failed for job {job_id}: {e}")
-        _job_status[job_id] = {
-            "status": "failed",
-            "progress": str(e),
-            "error": str(e)
-        }
+        youtube_jobs_repo.fail_job(job_id, str(e))
 
 
 def _generate_ai_reasoning(clip: dict, goal: str) -> str:
@@ -164,7 +168,8 @@ def _generate_ai_reasoning(clip: dict, goal: str) -> str:
 @router.post("/analyze", response_model=AnalyzeResponse)
 async def analyze_youtube_url(
     request: AnalyzeRequest,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    req: Request = None
 ):
     """
     Analyze a YouTube URL and find potential short clips using Director AI.
@@ -181,10 +186,26 @@ async def analyze_youtube_url(
     """
     job_id = str(uuid.uuid4())
 
-    _job_status[job_id] = {
-        "status": "pending",
-        "progress": "Запуск анализа..."
-    }
+    # Get user_id from request state (set by AuthMiddleware)
+    user_id = "guest"
+    if req and hasattr(req.state, "user_id"):
+        user_id = req.state.user_id
+
+    # Create job in database
+    youtube_jobs_repo.create_job(
+        job_id=job_id,
+        user_id=user_id,
+        youtube_url=request.youtube_url,
+        max_clips=request.max_clips,
+        min_duration=request.min_duration,
+        max_duration=request.max_duration,
+        goal=request.goal,
+        output_format=request.output_format,
+        output_width=request.output_width,
+        output_height=request.output_height,
+        enable_broll=request.enable_broll,
+        broll_source=request.broll_source
+    )
 
     # Start background task with all parameters
     background_tasks.add_task(
@@ -212,33 +233,33 @@ async def analyze_youtube_url(
 @router.get("/status/{job_id}")
 async def get_job_status(job_id: str):
     """Get the status of an analysis job."""
-    if job_id not in _job_status:
-        # Try to load from disk
-        result = shorts_service.get_analysis(job_id)
-        if result:
-            return {
-                "job_id": job_id,
-                "status": "completed",
-                "progress": "Analysis complete",
-                "result": result
-            }
-        raise HTTPException(status_code=404, detail="Job not found")
+    # Check database first
+    response = youtube_jobs_repo.get_job_status_response(job_id)
+    if response:
+        return response
 
-    status = _job_status[job_id]
-    return {
-        "job_id": job_id,
-        **status
-    }
+    # Fallback: Try to load from disk (legacy)
+    result = shorts_service.get_analysis(job_id)
+    if result:
+        return {
+            "job_id": job_id,
+            "status": "completed",
+            "progress": "Analysis complete",
+            "result": result
+        }
+
+    raise HTTPException(status_code=404, detail="Job not found")
 
 
 @router.get("/results/{job_id}")
 async def get_analysis_results(job_id: str):
     """Get the full analysis results for a job."""
-    # Check in-memory first
-    if job_id in _job_status and _job_status[job_id].get("status") == "completed":
-        return _job_status[job_id].get("result")
+    # Check database first
+    result = youtube_jobs_repo.get_analysis_result(job_id)
+    if result:
+        return result
 
-    # Check disk
+    # Fallback: Check disk (legacy)
     result = shorts_service.get_analysis(job_id)
     if result:
         return result
@@ -258,13 +279,12 @@ async def create_clip(request: CreateClipRequest):
 
     Returns the clip information that can be opened in the Editor.
     """
-    # Get analysis results
-    result = shorts_service.get_analysis(request.job_id)
+    # Get analysis results from database first
+    result = youtube_jobs_repo.get_analysis_result(request.job_id)
     if not result:
-        # Check in-memory status
-        if request.job_id in _job_status and _job_status[request.job_id].get("status") == "completed":
-            result = _job_status[request.job_id].get("result")
-        else:
+        # Fallback: Check disk (legacy)
+        result = shorts_service.get_analysis(request.job_id)
+        if not result:
             raise HTTPException(status_code=404, detail="Analysis not found")
 
     # Find the clip
@@ -301,6 +321,9 @@ async def create_clip(request: CreateClipRequest):
         from app.persistence.clips_repo import get_clips_repository, ClipRecord, Subtitle
         clips_repo = get_clips_repository()
 
+        # Generate new clip_id for the editor record
+        editor_clip_id = str(uuid.uuid4())
+
         # Convert words to subtitles format
         subtitles = []
         for i, word in enumerate(clip_data.get("words", [])):
@@ -311,13 +334,18 @@ async def create_clip(request: CreateClipRequest):
                 end=word.get("end", 0) - clip_data["start"]
             ))
 
+        # Build video URL for the editor (served from /shorts/{job_id}/clips/)
+        video_filename = Path(clip_path).name
+        video_url = f"/shorts/{request.job_id}/clips/{video_filename}"
+
         # Create clip record with Revideo format settings
         clip_record = ClipRecord(
-            clip_id=str(uuid.uuid4()),
+            clip_id=editor_clip_id,
             batch_id=request.job_id,
             clip_index=0,
             duration=clip_data["duration"],
-            video_filename=Path(clip_path).name,
+            video_url=video_url,
+            video_filename=video_filename,
             subtitles=subtitles,
             status="ready",
             style_preset=request.style,
@@ -327,10 +355,19 @@ async def create_clip(request: CreateClipRequest):
 
         clip_record = clips_repo.create_clip(clip_record)
 
+        # Update the youtube_clips table with the video path
+        youtube_jobs_repo.update_clip_status(
+            clip_id=clip_data["clip_id"],
+            status="created",
+            clip_video_path=clip_path,
+            clip_video_url=video_url
+        )
+
         return {
             "success": True,
             "clip_id": clip_record.clip_id,
             "clip_path": clip_path,
+            "video_url": video_url,
             "duration": clip_data["duration"],
             "format": request.format,
             "width": request.width,
@@ -378,3 +415,47 @@ async def get_source_video(job_id: str):
         media_type="video/mp4",
         filename=f"source-{job_id}.mp4"
     )
+
+
+@router.get("/jobs")
+async def list_jobs(req: Request, limit: int = 50):
+    """List all YouTube analysis jobs for the current user."""
+    user_id = "guest"
+    if req and hasattr(req.state, "user_id"):
+        user_id = req.state.user_id
+
+    jobs = youtube_jobs_repo.get_user_jobs(user_id, limit=limit)
+    return {
+        "jobs": [youtube_jobs_repo.to_api_response(job) for job in jobs],
+        "total": len(jobs)
+    }
+
+
+@router.get("/job/{job_id}")
+async def get_job_details(job_id: str):
+    """Get detailed information about a specific job including all clips."""
+    job = youtube_jobs_repo.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # Get clips from database
+    clips = youtube_jobs_repo.get_clips(job_id)
+
+    response = youtube_jobs_repo.to_api_response(job)
+    response["clips"] = [
+        {
+            "clip_id": clip.clip_id,
+            "clip_index": clip.clip_index,
+            "start": clip.start,
+            "end": clip.end,
+            "duration": clip.duration,
+            "text_preview": clip.text_preview,
+            "score": clip.score,
+            "ai_reasoning": clip.ai_reasoning,
+            "status": clip.status,
+            "video_url": clip.clip_video_url
+        }
+        for clip in clips
+    ]
+
+    return response

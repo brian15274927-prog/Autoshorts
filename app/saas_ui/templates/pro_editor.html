@@ -502,6 +502,7 @@
 const ProEditor = {
     mode: 'youtube',
     clipId: '{{ clip_id or "" }}',
+    jobId: '{{ job_id or "" }}',  // Faceless job ID
     subtitleStyle: 'hormozi',
     format: '9:16',
     position: 'center',
@@ -511,13 +512,342 @@ const ProEditor = {
     duration: 0,
     currentTime: 0,
     subtitles: [],
+    segments: [],  // Faceless video segments from DB
     brollOpen: false,
+    facelessData: null,  // Full faceless job data
 
     async init() {
-        if (this.clipId) {
+        // Check URL params for job_id
+        const urlParams = new URLSearchParams(window.location.search);
+        const jobIdFromUrl = urlParams.get('job_id');
+        if (jobIdFromUrl) {
+            this.jobId = jobIdFromUrl;
+        }
+
+        // Load faceless job if job_id is provided
+        if (this.jobId) {
+            this.switchMode('faceless');
+            await this.loadFacelessJob(this.jobId);
+        } else if (this.clipId) {
             await this.loadClip();
         }
         this.setupVideoEvents();
+    },
+
+    // Load faceless job with all segments from database
+    async loadFacelessJob(jobId) {
+        try {
+            console.log('[ProEditor] Loading faceless job:', jobId);
+            const response = await fetch(`/api/faceless/edit/${jobId}`);
+            if (!response.ok) {
+                throw new Error('Job not found');
+            }
+
+            const data = await response.json();
+            console.log('[ProEditor] Loaded faceless data:', data);
+
+            this.facelessData = data;
+            this.segments = data.segments || [];
+            this.duration = data.audio_duration || 0;
+
+            // Load video
+            if (data.video_url) {
+                const video = document.getElementById('video-player');
+                video.src = data.video_url;
+                document.getElementById('video-placeholder').classList.add('hidden');
+            }
+
+            // Render segments as timeline and subtitles
+            this.renderFacelessSegments();
+            this.renderTimeline();
+
+            // Show status
+            App.showToast(`Loaded: ${data.topic} (${this.segments.length} segments)`);
+
+        } catch (e) {
+            console.error('[ProEditor] Failed to load faceless job:', e);
+            App.showToast('Failed to load job: ' + e.message, 'error');
+        }
+    },
+
+    // Selected segment index for editing
+    selectedSegmentIndex: null,
+    pendingChanges: {},  // Track unsaved changes
+
+    // Render faceless segments in the subtitle panel
+    renderFacelessSegments() {
+        const list = document.getElementById('subtitle-list');
+
+        if (!this.segments.length) {
+            list.innerHTML = '<div class="text-center py-8 text-dark-500"><p>Сегменты не найдены</p></div>';
+            return;
+        }
+
+        // Convert segments to subtitle format for display
+        let currentTime = 0;
+        this.subtitles = this.segments.map((seg, i) => {
+            const sub = {
+                start: currentTime,
+                end: currentTime + seg.duration,
+                text: seg.text,
+                image_url: seg.image_url,
+                index: i
+            };
+            currentTime += seg.duration;
+            return sub;
+        });
+
+        list.innerHTML = this.segments.map((seg, i) => `
+            <div class="segment-item p-3 bg-dark-800/50 rounded-lg hover:bg-dark-800 transition-colors group" data-index="${i}">
+                <div class="flex gap-3">
+                    <div class="relative flex-shrink-0">
+                        ${seg.image_url ? `<img src="${seg.image_url}" class="w-16 h-24 object-cover rounded-lg" onerror="this.src='/static/placeholder.png'">` : '<div class="w-16 h-24 bg-dark-700 rounded-lg flex items-center justify-center text-dark-500 text-xs">Нет</div>'}
+                        <button onclick="ProEditor.showImageEditor(${i})" class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
+                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center justify-between gap-2 mb-1">
+                            <div class="flex items-center gap-2">
+                                <span class="text-[10px] text-brand-400 font-medium">Сегмент ${i + 1}</span>
+                                <span class="text-[10px] text-dark-500 font-mono">${seg.duration.toFixed(1)}s</span>
+                            </div>
+                            <button onclick="ProEditor.editSegmentText(${i})" class="opacity-0 group-hover:opacity-100 text-dark-400 hover:text-white transition-all p-1">
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path>
+                                </svg>
+                            </button>
+                        </div>
+                        <p id="segment-text-${i}" class="text-sm text-white line-clamp-3 cursor-pointer" onclick="ProEditor.jumpToSegment(${i})">${seg.text}</p>
+                        <p class="text-[10px] text-dark-600 mt-1 truncate">${seg.emotion || 'neutral'}</p>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    },
+
+    // Edit segment text inline
+    editSegmentText(index) {
+        const seg = this.segments[index];
+        if (!seg) return;
+
+        const textEl = document.getElementById(`segment-text-${index}`);
+        const originalText = seg.text;
+
+        // Replace with textarea
+        textEl.outerHTML = `
+            <div class="space-y-2">
+                <textarea id="segment-edit-${index}" class="w-full p-2 bg-dark-700 border border-brand-500 rounded text-sm text-white resize-none" rows="3">${originalText}</textarea>
+                <div class="flex gap-2">
+                    <button onclick="ProEditor.saveSegmentText(${index})" class="px-3 py-1 bg-brand-600 hover:bg-brand-500 text-white text-xs rounded">Сохранить</button>
+                    <button onclick="ProEditor.cancelEditText(${index}, '${originalText.replace(/'/g, "\\'")}');" class="px-3 py-1 bg-dark-600 hover:bg-dark-500 text-white text-xs rounded">Отмена</button>
+                </div>
+            </div>
+        `;
+
+        document.getElementById(`segment-edit-${index}`).focus();
+    },
+
+    async saveSegmentText(index) {
+        const textarea = document.getElementById(`segment-edit-${index}`);
+        const newText = textarea.value.trim();
+
+        if (!newText) {
+            App.showToast('Текст не может быть пустым', 'error');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/faceless/edit/${this.jobId}/update_segment`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ segment_index: index, text: newText })
+            });
+
+            if (!response.ok) throw new Error('Ошибка сохранения');
+
+            const result = await response.json();
+
+            // Update local data
+            this.segments[index].text = newText;
+
+            // Re-render
+            this.renderFacelessSegments();
+
+            App.showToast('Сегмент сохранён');
+        } catch (e) {
+            App.showToast('Ошибка: ' + e.message, 'error');
+        }
+    },
+
+    cancelEditText(index, originalText) {
+        // Restore original text
+        const container = document.getElementById(`segment-edit-${index}`)?.parentElement;
+        if (container) {
+            container.outerHTML = `<p id="segment-text-${index}" class="text-sm text-white line-clamp-3 cursor-pointer" onclick="ProEditor.jumpToSegment(${index})">${originalText}</p>`;
+        }
+    },
+
+    // Image editor modal
+    showImageEditor(index) {
+        this.selectedSegmentIndex = index;
+        const seg = this.segments[index];
+
+        // Create modal if not exists
+        let modal = document.getElementById('image-editor-modal');
+        if (!modal) {
+            const div = document.createElement('div');
+            div.innerHTML = `
+                <div id="image-editor-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+                    <div class="glass rounded-2xl p-6 max-w-lg w-full mx-4">
+                        <div class="flex items-center justify-between mb-4">
+                            <h2 class="text-lg font-bold text-white">Заменить изображение</h2>
+                            <button onclick="ProEditor.hideImageEditor()" class="text-dark-400 hover:text-white">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                </svg>
+                            </button>
+                        </div>
+
+                        <div class="mb-4">
+                            <img id="image-editor-preview" src="" class="w-full h-48 object-contain bg-dark-800 rounded-lg mb-4">
+                        </div>
+
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-dark-300 mb-2">Промпт для DALL-E</label>
+                                <textarea id="image-editor-prompt" rows="3" class="w-full px-4 py-3 bg-dark-800/50 border border-white/10 rounded-xl text-white placeholder-dark-500 focus:outline-none focus:border-brand-500"></textarea>
+                            </div>
+
+                            <div class="flex gap-3">
+                                <button onclick="ProEditor.regenerateImage()" class="flex-1 px-4 py-3 bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white font-semibold rounded-xl flex items-center justify-center gap-2">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                                    </svg>
+                                    Сгенерировать DALL-E
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(div.firstElementChild);
+            modal = document.getElementById('image-editor-modal');
+        }
+
+        // Populate data
+        document.getElementById('image-editor-preview').src = seg.image_url || '/static/placeholder.png';
+        document.getElementById('image-editor-prompt').value = seg.visual_prompt || '';
+
+        modal.classList.remove('hidden');
+    },
+
+    hideImageEditor() {
+        const modal = document.getElementById('image-editor-modal');
+        if (modal) modal.classList.add('hidden');
+        this.selectedSegmentIndex = null;
+    },
+
+    async regenerateImage() {
+        const index = this.selectedSegmentIndex;
+        if (index === null) return;
+
+        const prompt = document.getElementById('image-editor-prompt').value.trim();
+        if (!prompt) {
+            App.showToast('Введите промпт для генерации', 'error');
+            return;
+        }
+
+        App.showToast('Генерация изображения...');
+
+        try {
+            const response = await fetch(`/api/faceless/edit/${this.jobId}/regenerate_image/${index}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt })
+            });
+
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.detail || 'Ошибка генерации');
+            }
+
+            const result = await response.json();
+
+            // Update local data
+            this.segments[index].image_url = result.image_url + '?t=' + Date.now();
+            this.segments[index].visual_prompt = prompt;
+
+            // Update preview
+            document.getElementById('image-editor-preview').src = result.image_url + '?t=' + Date.now();
+
+            // Re-render segments
+            this.renderFacelessSegments();
+            this.renderTimeline();
+
+            App.showToast('Изображение обновлено!');
+            this.hideImageEditor();
+
+        } catch (e) {
+            App.showToast('Ошибка: ' + e.message, 'error');
+        }
+    },
+
+    // Render timeline with segments
+    renderTimeline() {
+        const container = document.getElementById('timeline-segments');
+        if (!this.segments.length || !this.duration) {
+            container.innerHTML = '';
+            return;
+        }
+
+        let currentTime = 0;
+        container.innerHTML = this.segments.map((seg, i) => {
+            const left = (currentTime / this.duration) * 100;
+            const width = (seg.duration / this.duration) * 100;
+            currentTime += seg.duration;
+
+            return `
+                <div class="timeline-segment"
+                     style="left: ${left}%; width: ${width}%"
+                     data-index="${i}"
+                     onclick="ProEditor.selectSegment(${i})"
+                     title="${seg.text.substring(0, 50)}...">
+                    <div class="absolute inset-0 flex items-center justify-center overflow-hidden">
+                        ${seg.image_url ? `<img src="${seg.image_url}" class="w-full h-full object-cover opacity-50" onerror="this.style.display='none'">` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    },
+
+    jumpToSegment(index) {
+        const seg = this.segments[index];
+        if (!seg) return;
+
+        // Calculate start time for this segment
+        let startTime = 0;
+        for (let i = 0; i < index; i++) {
+            startTime += this.segments[i].duration;
+        }
+
+        document.getElementById('video-player').currentTime = startTime;
+        this.selectSegment(index);
+    },
+
+    selectSegment(index) {
+        // Highlight selected segment in timeline
+        document.querySelectorAll('.timeline-segment').forEach((el, i) => {
+            el.classList.toggle('selected', i === index);
+        });
+
+        // Show segment image in preview if available
+        const seg = this.segments[index];
+        if (seg && seg.image_url) {
+            console.log('[ProEditor] Selected segment image:', seg.image_url);
+        }
     },
 
     // Mode switching
@@ -527,7 +857,8 @@ const ProEditor = {
             t.classList.toggle('active', t.dataset.mode === mode);
         });
 
-        if (mode === 'faceless') {
+        // Only show generator if no job is loaded
+        if (mode === 'faceless' && !this.jobId && !this.facelessData) {
             this.showFacelessGenerator();
         }
     },
@@ -795,10 +1126,30 @@ const ProEditor = {
         document.getElementById(`tab-${tab}`).classList.remove('hidden');
     },
 
-    // B-Roll
+    // B-Roll / Visual replacement
     toggleBRoll() {
-        this.brollOpen = !this.brollOpen;
-        document.getElementById('broll-panel').classList.toggle('open', this.brollOpen);
+        // If we have a selected segment, open the image editor for it
+        // Otherwise find the currently playing segment or use first one
+        if (this.segments.length > 0) {
+            // Find current segment based on video time
+            let targetIndex = 0;
+            let currentTime = 0;
+
+            for (let i = 0; i < this.segments.length; i++) {
+                const seg = this.segments[i];
+                if (this.currentTime >= currentTime && this.currentTime < currentTime + seg.duration) {
+                    targetIndex = i;
+                    break;
+                }
+                currentTime += seg.duration;
+            }
+
+            this.showImageEditor(targetIndex);
+        } else {
+            // Fallback to B-Roll panel
+            this.brollOpen = !this.brollOpen;
+            document.getElementById('broll-panel').classList.toggle('open', this.brollOpen);
+        }
     },
 
     async searchBRoll() {
@@ -845,13 +1196,88 @@ const ProEditor = {
 
     // Render & Export
     async render() {
-        App.showToast('Рендеринг...');
-        // TODO: Implement render
+        if (!this.jobId) {
+            App.showToast('Нет задания для рендеринга', 'error');
+            return;
+        }
+
+        App.showToast('Запуск рендеринга...');
+
+        try {
+            const response = await fetch(`/api/faceless/edit/${this.jobId}/render`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.detail || 'Ошибка рендеринга');
+            }
+
+            const result = await response.json();
+            App.showToast('Рендеринг запущен. Видео будет готово через ~30 сек.');
+
+            // Poll for completion
+            this.pollRenderStatus();
+
+        } catch (e) {
+            App.showToast('Ошибка: ' + e.message, 'error');
+        }
+    },
+
+    async pollRenderStatus() {
+        const poll = async () => {
+            try {
+                const response = await fetch(`/api/faceless/status/${this.jobId}`);
+                const status = await response.json();
+
+                if (status.status === 'completed') {
+                    // Reload video
+                    const video = document.getElementById('video-player');
+                    video.src = status.output_path ? `/api/faceless/download/${this.jobId}?t=${Date.now()}` : video.src;
+                    video.load();
+                    App.showToast('Рендеринг завершён!');
+                    return;
+                } else if (status.status === 'failed') {
+                    App.showToast('Ошибка рендеринга: ' + status.error, 'error');
+                    return;
+                }
+
+                // Keep polling
+                setTimeout(poll, 2000);
+            } catch (e) {
+                setTimeout(poll, 3000);
+            }
+        };
+
+        poll();
     },
 
     async export() {
-        if (this.clipId) {
+        // Export faceless video or clip
+        if (this.jobId && this.facelessData && this.facelessData.video_url) {
+            window.open(`/api/faceless/download/${this.jobId}`, '_blank');
+        } else if (this.clipId) {
             window.open(`/api/video/preview/${this.clipId}`, '_blank');
+        } else {
+            App.showToast('Нет видео для экспорта', 'error');
+        }
+    },
+
+    // Refresh segments from database
+    async refreshSegments() {
+        if (!this.jobId) return;
+
+        try {
+            const response = await fetch(`/api/faceless/edit/${this.jobId}/segments`);
+            if (response.ok) {
+                const data = await response.json();
+                this.segments = data.segments || [];
+                this.renderFacelessSegments();
+                this.renderTimeline();
+            }
+        } catch (e) {
+            console.error('Failed to refresh segments:', e);
         }
     },
 

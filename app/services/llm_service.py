@@ -187,10 +187,14 @@ class LLMService:
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model: str = "gpt-4o",
+        model: str = "gpt-4o-mini",  # Cost-optimized: 15x cheaper than gpt-4o
         base_url: str = "https://api.openai.com/v1"
     ):
-        """Initialize LLM Service with API key."""
+        """
+        Initialize LLM Service with API key.
+
+        Default model: gpt-4o-mini (15x cheaper, sufficient for script generation)
+        """
         from app.config import config
         self.api_key = api_key or config.ai.openai_api_key or ""
         self.model = model
@@ -200,6 +204,8 @@ class LLMService:
         if not self.api_key or self.api_key.startswith("PASTE_"):
             logger.warning("OpenAI API key not configured - using fallback scripts")
             self.api_key = ""
+        else:
+            logger.info(f"[LLM] Service initialized with {model} (cost-optimized)")
 
     async def generate_script(
         self,

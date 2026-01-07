@@ -91,11 +91,10 @@ class DalleService:
     OPENAI_API_URL = "https://api.openai.com/v1/images/generations"
 
     # Size options for DALL-E 3
-    # COST OPTIMIZATION: Always use 1024x1024 ($0.04) instead of 1024x1792 ($0.08)
-    # Images will be scaled/cropped by Ken Burns effect anyway
+    # Use native aspect ratios for better quality (no stretching)
     SIZES = {
-        "9:16": "1024x1024",  # Vertical - use square, scale in post
-        "16:9": "1024x1024",  # Horizontal - use square, scale in post
+        "9:16": "1024x1792",  # Vertical (TikTok, Reels, Shorts) - native vertical
+        "16:9": "1792x1024",  # Horizontal (YouTube) - native horizontal
         "1:1": "1024x1024",   # Square (Instagram)
     }
 
@@ -378,16 +377,18 @@ class DalleService:
         for idx, prompt in enumerate(visual_prompts):
             output_path = os.path.join(output_dir, f"segment_{idx:03d}.png")
 
-            # COST OPTIMIZATION: Check for similar prompts to reuse images
+            # DISABLED: Cost optimization was too aggressive with art style modifiers
+            # All prompts share the same art style prefix, causing false matches
+            # Each segment MUST have a unique DALL-E generated image
             prompt_hash = self._calculate_prompt_hash(prompt)
-            reuse_key = None
+            reuse_key = None  # DISABLED - always generate unique images
 
-            for existing_hash, existing_image in prompt_to_image.items():
-                # If prompts are >70% similar, reuse the image
-                common_words = set(prompt_hash.split()) & set(existing_hash.split())
-                if len(common_words) >= 5:  # At least 5 common keywords
-                    reuse_key = existing_hash
-                    break
+            # OLD LOGIC (disabled): This was matching art style words incorrectly
+            # for existing_hash, existing_image in prompt_to_image.items():
+            #     common_words = set(prompt_hash.split()) & set(existing_hash.split())
+            #     if len(common_words) >= 5:
+            #         reuse_key = existing_hash
+            #         break
 
             if reuse_key and reuse_key in prompt_to_image:
                 # REUSE existing image (copy file)
@@ -395,10 +396,17 @@ class DalleService:
                 import shutil
                 shutil.copy(existing.image_path, output_path)
 
+                # Parse size string to get width and height
+                size_parts = size.split("x")
+                img_width = int(size_parts[0])
+                img_height = int(size_parts[1])
+
                 reused = GeneratedImage(
                     image_path=output_path,
                     prompt=f"[reused] {prompt}",
-                    size=size,
+                    revised_prompt="[reused from similar prompt]",
+                    width=img_width,
+                    height=img_height,
                     segment_index=idx
                 )
                 images.append(reused)
@@ -793,7 +801,7 @@ IMPORTANT:
         }
 
         payload = {
-            "model": "gpt-4o",
+            "model": "gpt-4o-mini",  # Cost-optimized: 15x cheaper than gpt-4o
             "messages": [
                 {"role": "system", "content": self.SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt}
