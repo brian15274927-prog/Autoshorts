@@ -283,16 +283,27 @@ const Portraits = {
 
     async loadTemplates() {
         try {
-            const response = await fetch('/templates/templates.json');
-            const data = await response.json();
+            // Try API endpoint first (proper way)
+            let response = await fetch('/api/portraits/templates');
+            let data = await response.json();
+            
+            // Fallback to direct JSON file if API fails
+            if (!data || !data.portraits || data.portraits.length === 0) {
+                console.log('[PORTRAITS] API returned empty, trying direct JSON...');
+                response = await fetch('/templates/templates.json');
+                data = await response.json();
+            }
+            
             this.templates = data.portraits || [];
+            console.log(`[PORTRAITS] Loaded ${this.templates.length} templates`);
             this.renderTemplates();
         } catch (e) {
-            console.error('Failed to load templates:', e);
+            console.error('[PORTRAITS] Failed to load templates:', e);
             document.getElementById('templates-grid').innerHTML = `
                 <div class="col-span-4 text-center py-8">
                     <p class="text-red-400">Не удалось загрузить шаблоны</p>
-                    <p class="text-dark-500 text-sm mt-2">Добавьте изображения в папку templates</p>
+                    <p class="text-dark-500 text-sm mt-2">Ошибка: ${e.message}</p>
+                    <p class="text-dark-600 text-xs mt-1">Проверьте /api/portraits/templates</p>
                 </div>
             `;
         }

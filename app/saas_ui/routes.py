@@ -221,7 +221,26 @@ async def faceless_studio(
     user: Optional[User] = Depends(get_current_user_optional),
 ):
     """
-    Faceless Studio - Standalone faceless video generator.
+    Faceless Studio - 2-step flow with script preview and editing.
+    1. Prepare script → 2. Edit → 3. Generate video
+    """
+    credits = get_user_credits(user)
+    user_id = user.user_id if user else None
+
+    return templates.TemplateResponse("faceless_mvp.html", {
+        "request": request,
+        "credits": credits,
+        "user_id": user_id,
+    })
+
+
+@router.get("/app/faceless-old", response_class=HTMLResponse, include_in_schema=False)
+async def faceless_old(
+    request: Request,
+    user: Optional[User] = Depends(get_current_user_optional),
+):
+    """
+    Faceless Old - Legacy version (direct generation).
     """
     credits = get_user_credits(user)
     user_id = user.user_id if user else None
@@ -234,44 +253,6 @@ async def faceless_studio(
 
 
 # =============================================================================
-# Music Video Generator
+# REMOVED: Music Video Generator & AI Portraits
+# These features will be implemented later
 # =============================================================================
-
-@router.get("/app/musicvideo", response_class=HTMLResponse, include_in_schema=False)
-async def musicvideo_studio(
-    request: Request,
-    user: Optional[User] = Depends(get_current_user_optional),
-):
-    """
-    Music Video Generator - Create AI-generated music videos from audio.
-    """
-    credits = get_user_credits(user)
-    user_id = user.user_id if user else None
-
-    return templates.TemplateResponse("musicvideo.html", {
-        "request": request,
-        "credits": credits,
-        "user_id": user_id,
-    })
-
-
-# =============================================================================
-# AI Portraits Studio
-# =============================================================================
-
-@router.get("/app/portraits", response_class=HTMLResponse, include_in_schema=False)
-async def portraits_studio(
-    request: Request,
-    user: Optional[User] = Depends(get_current_user_optional),
-):
-    """
-    AI Portraits Studio - Generate professional portraits with templates.
-    """
-    credits = get_user_credits(user)
-    user_id = user.user_id if user else None
-
-    return templates.TemplateResponse("portraits.html", {
-        "request": request,
-        "credits": credits,
-        "user_id": user_id,
-    })

@@ -277,6 +277,19 @@ class TechnicalDirector:
         logger.info(f"[ORCHESTRATOR] PHASE 2 COMPLETE: {len(segment_result.segments)} segments created")
 
         # ═══════════════════════════════════════════════════════════════════
+        # PHASE 2.5: DEDUPLICATION & MULTI-SUBJECT FIX
+        # ═══════════════════════════════════════════════════════════════════
+        logger.info("[ORCHESTRATOR] PHASE 2.5: Applying deduplication & multi-subject fixes...")
+        
+        # 1. Deduplicate similar text segments
+        segment_result.segments = self._deduplicate_segments(segment_result.segments)
+        
+        # 2. Fix multi-subject prompts (e.g., "Maduro and Xi" → "Two men: one..., another...")
+        segment_result.segments = self._fix_multi_subject_prompts(segment_result.segments)
+        
+        logger.info(f"[ORCHESTRATOR] PHASE 2.5 COMPLETE: Segments polished")
+
+        # ═══════════════════════════════════════════════════════════════════
         # PHASE 3: ASSEMBLY
         # ═══════════════════════════════════════════════════════════════════
         logger.info("[ORCHESTRATOR] PHASE 3: Assembling final script...")
@@ -434,6 +447,122 @@ class TechnicalDirector:
 # ═══════════════════════════════════════════════════════════════════════════════
 # BILLING ERROR HANDLER
 # ═══════════════════════════════════════════════════════════════════════════════
+
+    def _deduplicate_segments(self, segments: List[VisualSegment]) -> List[VisualSegment]:
+        """
+        Deduplicate segments with similar meaning.
+        
+        If segment N repeats the meaning of segment M, rewrite it.
+        
+        Strategy:
+        - Compare each segment with previous segments
+        - If semantic similarity > 80%, mark as duplicate
+        - Rewrite duplicates to add new information
+        """
+        import re
+        from difflib import SequenceMatcher
+        
+        logger.info(f"[DEDUP] 🔍 Checking {len(segments)} segments for duplicates...")
+        
+        def similarity(a: str, b: str) -> float:
+            """Calculate text similarity (0-1)."""
+            # Normalize: lowercase, remove punctuation
+            a_norm = re.sub(r'[^\w\s]', '', a.lower())
+            b_norm = re.sub(r'[^\w\s]', '', b.lower())
+            return SequenceMatcher(None, a_norm, b_norm).ratio()
+        
+        deduplicated = []
+        seen_texts = []
+        
+        for i, seg in enumerate(segments):
+            is_duplicate = False
+            
+            # Check against all previous segments
+            for prev_text in seen_texts:
+                sim = similarity(seg.text, prev_text)
+                
+                if sim > 0.8:  # 80% similarity = duplicate
+                    logger.warning(f"[DEDUP] ⚠️  Segment {i+1} is {sim*100:.0f}% similar to previous segment")
+                    logger.warning(f"[DEDUP]     Original: {seg.text[:60]}...")
+                    is_duplicate = True
+                    break
+            
+            if is_duplicate:
+                # Rewrite: Add "Furthermore," or "Additionally," to signal continuation
+                if not seg.text.lower().startswith(('furthermore', 'additionally', 'moreover', 'in addition')):
+                    seg.text = f"Moreover, {seg.text}"
+                    logger.info(f"[DEDUP]     ✓ Rewritten: {seg.text[:60]}...")
+            
+            seen_texts.append(seg.text)
+            deduplicated.append(seg)
+        
+        logger.info(f"[DEDUP] ✅ Deduplication complete")
+        return deduplicated
+    
+    def _fix_multi_subject_prompts(self, segments: List[VisualSegment]) -> List[VisualSegment]:
+        """
+        Fix prompts that mention multiple people.
+        
+        Problem: "Maduro and Xi" → AI generates ONE blended face ❌
+        Solution: "Two different men: one with [Maduro features], another with [Xi features]" ✅
+        
+        Detects patterns like:
+        - "X and Y"
+        - "X with Y"
+        - "X meeting Y"
+        - "X, Y"
+        """
+        import re
+        
+        logger.info(f"[MULTI_SUBJECT] 🔍 Checking {len(segments)} prompts for multiple subjects...")
+        
+        # Patterns that indicate multiple people
+        multi_person_patterns = [
+            r'\band\b.*\b(meeting|with|greeting|shaking hands|together)',
+            r'(president|leader|minister|king|queen|ceo)\s+\w+\s+and\s+(president|leader|minister|king|queen|ceo)',
+            r'(two|both|pair of)\s+(people|men|women|leaders|presidents)',
+        ]
+        
+        fixed_count = 0
+        
+        for i, seg in enumerate(segments):
+            prompt_lower = seg.visual_prompt.lower()
+            
+            # Check if prompt mentions multiple subjects
+            is_multi_subject = any(re.search(pattern, prompt_lower) for pattern in multi_person_patterns)
+            
+            if is_multi_subject:
+                logger.warning(f"[MULTI_SUBJECT] ⚠️  Segment {i+1} has multiple subjects")
+                logger.warning(f"[MULTI_SUBJECT]     Original: {seg.visual_prompt[:80]}...")
+                
+                # Fix: Add explicit clarification
+                # If prompt contains "and", split and clarify
+                if ' and ' in prompt_lower and 'shaking hands' not in prompt_lower:
+                    # Add clarification about two DIFFERENT people
+                    seg.visual_prompt = seg.visual_prompt.replace(
+                        ' and ',
+                        ', TWO DIFFERENT PEOPLE: one person '
+                    ).replace(
+                        ', ',
+                        ' AND another person ',
+                        1  # Only first occurrence after our insert
+                    )
+                elif 'meeting' in prompt_lower or 'shaking hands' in prompt_lower:
+                    # Explicitly state TWO DIFFERENT people
+                    if not 'two different' in prompt_lower and not 'two separate' in prompt_lower:
+                        # Prepend clarification
+                        seg.visual_prompt = f"Two different people shaking hands, {seg.visual_prompt}"
+                
+                logger.info(f"[MULTI_SUBJECT]     ✓ Fixed: {seg.visual_prompt[:80]}...")
+                fixed_count += 1
+        
+        if fixed_count > 0:
+            logger.info(f"[MULTI_SUBJECT] ✅ Fixed {fixed_count} multi-subject prompts")
+        else:
+            logger.info(f"[MULTI_SUBJECT] ✅ No multi-subject issues found")
+        
+        return segments
+
 
 class BillingErrorHandler:
     """

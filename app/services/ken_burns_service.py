@@ -107,10 +107,11 @@ class KenBurnsService:
         """
         total_frames = int(duration * self.fps)
 
-        # STABILIZATION: Use very gentle zoom increments for smooth motion
-        # Max zoom reduced from 1.5 to 1.12 for cinematic smoothness
-        zoom_increment = 0.12 / total_frames  # Exactly 12% zoom over duration
-        pan_distance = 0.08  # Reduced from 0.3 to 0.08 for subtle pan
+        # ANTI-SHAKE: Ultra-minimal zoom for smooth "floating" effect
+        # Zoom speed: 0.0005-0.001 per frame (almost imperceptible)
+        # Video should "float" smoothly, NOT shake or jitter
+        zoom_increment = 0.0008  # 0.08% zoom per frame = ultra-smooth
+        pan_distance = 0.04  # Reduced from 0.08 to 0.04 for minimal drift
 
         if effect == KenBurnsEffect.ZOOM_IN:
             # Gentle zoom in - strictly linear, centered
@@ -191,6 +192,10 @@ class KenBurnsService:
         """
         Synchronous image animation using subprocess.run.
         This avoids Windows asyncio issues entirely.
+        
+        CRITICAL FIX: Properly handle aspect ratios to prevent face stretching.
+        - For 9:16 (vertical): crop center, don't stretch
+        - For 16:9 (horizontal): scale properly
         """
         if not os.path.exists(image_path):
             logger.error(f"[STOP] ERROR: Image NOT FOUND - STOPPING")
@@ -201,8 +206,15 @@ class KenBurnsService:
         image_path_normalized = image_path.replace('\\', '/')
         output_path_normalized = output_path.replace('\\', '/')
 
+        # Detect actual input dimensions from image
+        # Default to common Nano Banana / DALL-E outputs
         input_width = 1024
-        input_height = 1792
+        input_height = 1024
+        
+        # If output is vertical (9:16), we assume input should be cropped, not stretched
+        if output_height > output_width:
+            # Vertical video (9:16) - use taller input if available
+            input_height = 1920 if output_height >= 1920 else 1792
 
         zoom_filter = self._get_zoom_filter(
             effect, duration,
@@ -210,11 +222,25 @@ class KenBurnsService:
             output_width, output_height
         )
 
+        # CRITICAL FIX: Add center crop for vertical videos to prevent stretching
+        # If we're targeting vertical (9:16), add crop filter BEFORE zoom
+        is_vertical = output_height > output_width
+        
+        if is_vertical:
+            # Calculate crop to 9:16 ratio from center (prevents face stretching)
+            target_ratio = output_width / output_height  # e.g., 1080/1920 = 0.5625
+            # Crop to center: scale to fit height, then crop width
+            crop_filter = f"scale=-1:{input_height},crop={int(input_height * target_ratio)}:{input_height}"
+            full_filter = f"{crop_filter},{zoom_filter}"
+            logger.info(f"[KEN_BURNS] Vertical format detected: applying center crop to prevent stretching")
+        else:
+            full_filter = zoom_filter
+
         cmd = [
             FFMPEG_PATH, "-y",
             "-loop", "1",
             "-i", image_path_normalized,
-            "-vf", zoom_filter,
+            "-vf", full_filter,
             "-c:v", "libx264",
             "-preset", "fast",
             "-crf", "18",

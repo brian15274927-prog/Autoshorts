@@ -1,0 +1,979 @@
+{% extends "base.html" %}
+
+{% block title %}Faceless AI Студия{% endblock %}
+
+{% block head %}
+<style>
+    /* Progress ring */
+    .progress-ring {
+        transform: rotate(-90deg);
+    }
+    .progress-ring circle {
+        stroke-dasharray: 314;
+        stroke-dashoffset: 314;
+        stroke-linecap: round;
+        transition: stroke-dashoffset 0.5s ease;
+    }
+
+    /* Step indicators */
+    .step-dot {
+        transition: all 0.3s ease;
+    }
+    .step-dot.active { background: #a855f7; transform: scale(1.2); }
+    .step-dot.completed { background: #22c55e; }
+
+    /* Segment card */
+    .segment-card {
+        background: linear-gradient(135deg, rgba(168, 85, 247, 0.05), rgba(99, 102, 241, 0.05));
+        border: 1px solid rgba(168, 85, 247, 0.2);
+        transition: all 0.2s;
+    }
+    .segment-card:hover {
+        border-color: rgba(168, 85, 247, 0.4);
+        box-shadow: 0 4px 20px rgba(168, 85, 247, 0.1);
+    }
+
+    /* Segment textarea */
+    .segment-textarea {
+        background: rgba(17, 24, 39, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 0.75rem;
+        color: white;
+        padding: 12px;
+        width: 100%;
+        min-height: 80px;
+        resize: vertical;
+        font-size: 14px;
+        line-height: 1.6;
+        transition: all 0.2s;
+    }
+    .segment-textarea:focus {
+        outline: none;
+        border-color: #a855f7;
+        box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.1);
+    }
+
+    /* Visual hint */
+    .visual-hint {
+        font-size: 11px;
+        color: #9ca3af;
+        font-style: italic;
+        margin-top: 6px;
+        padding: 6px 10px;
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 6px;
+        border-left: 2px solid #a855f7;
+    }
+
+    /* Character count */
+    .char-count {
+        font-size: 10px;
+        color: #6b7280;
+        text-align: right;
+        margin-top: 4px;
+    }
+    .char-count.warning {
+        color: #f59e0b;
+    }
+    .char-count.danger {
+        color: #ef4444;
+    }
+
+    /* Job card */
+    .job-card {
+        transition: all 0.2s;
+    }
+    .job-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    }
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght=900&display=swap" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="h-full flex flex-col" id="faceless-app">
+    <!-- Header -->
+    <header class="h-14 glass border-b border-white/5 flex items-center justify-between px-6 flex-shrink-0">
+        <div class="flex items-center gap-4">
+            <a href="/app" class="flex items-center gap-2 text-dark-400 hover:text-white transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+                </svg>
+            </a>
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-gradient-to-br from-brand-500 to-indigo-600 rounded-xl flex items-center justify-center">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold text-white">Faceless AI Студия</h1>
+                    <p class="text-xs text-dark-400">Автоматическая генерация видео</p>
+                </div>
+            </div>
+        </div>
+        <div class="flex items-center gap-4">
+            <span class="text-sm text-dark-400">{{ credits }} кредитов</span>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="flex-1 flex overflow-hidden">
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!-- ШАГ 1: НАСТРОЙКИ -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <div id="step-settings" class="w-1/2 p-8 overflow-y-auto scrollbar-thin border-r border-white/5">
+            <div class="max-w-lg mx-auto space-y-6">
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center">
+                        <span class="text-white text-lg">📝</span>
+                    </div>
+                    <div>
+                        <h2 class="text-lg font-bold text-white">Шаг 1: Настройки</h2>
+                        <p class="text-xs text-dark-400">Тема и параметры видео</p>
+                    </div>
+                </div>
+
+                <!-- Тема видео -->
+                <div>
+                    <label class="block text-sm font-medium text-dark-300 mb-2">Тема видео</label>
+                    <input type="text" id="topic" placeholder="5 лайфхаков, которые изменят ваше утро"
+                           class="w-full px-4 py-4 bg-dark-800/50 border border-white/10 rounded-xl text-white placeholder-dark-500 focus:outline-none focus:border-brand-500 text-lg">
+                    <p class="text-xs text-dark-500 mt-2">Будьте конкретны — ИИ создаст сценарий на основе этой темы</p>
+                </div>
+
+                <!-- Стиль и Язык -->
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-dark-300 mb-2">Стиль сценария</label>
+                        <select id="style" class="w-full px-4 py-3 bg-dark-800/50 border border-white/10 rounded-xl text-white focus:outline-none focus:border-brand-500">
+                            <option value="viral">🔥 Виральный</option>
+                            <option value="educational">📚 Обучающий</option>
+                            <option value="motivational">💪 Мотивационный</option>
+                            <option value="documentary" selected>🎬 Документальный</option>
+                            <option value="mystery">🔍 Детективный</option>
+                            <option value="story">📖 Сторителлинг</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-dark-300 mb-2">Язык</label>
+                        <select id="language" class="w-full px-4 py-3 bg-dark-800/50 border border-white/10 rounded-xl text-white focus:outline-none focus:border-brand-500">
+                            <option value="ru" selected>🇷🇺 Русский</option>
+                            <option value="en">🇺🇸 English</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Генератор изображений -->
+                <div>
+                    <label class="block text-sm font-medium text-dark-300 mb-3">Генератор изображений</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button type="button" class="provider-btn p-4 bg-dark-800/50 rounded-xl border-2 border-brand-500 bg-brand-500/10 text-left transition-all hover:scale-105" data-provider="dalle" onclick="MVP.setImageProvider('dalle')">
+                            <div class="flex items-center gap-3 mb-2">
+                                <div class="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-lg flex items-center justify-center">
+                                    <span class="text-white text-sm font-bold">D</span>
+                                </div>
+                                <div>
+                                    <span class="text-sm text-white font-medium block">DALL-E 3</span>
+                                    <span class="text-[10px] text-dark-500">OpenAI</span>
+                                </div>
+                            </div>
+                            <p class="text-[10px] text-dark-400">~$0.04/изобр • Высокое качество</p>
+                        </button>
+                        <button type="button" class="provider-btn p-4 bg-dark-800/50 rounded-xl border-2 border-white/10 text-left transition-all hover:scale-105" data-provider="nanobanana" onclick="MVP.setImageProvider('nanobanana')">
+                            <div class="flex items-center gap-3 mb-2">
+                                <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                                    <span class="text-white text-sm font-bold">G</span>
+                                </div>
+                                <div>
+                                    <span class="text-sm text-white font-medium block">Nano Banana</span>
+                                    <span class="text-[10px] text-dark-500">Google Gemini</span>
+                                </div>
+                            </div>
+                            <p class="text-[10px] text-dark-400">~$0.039/изобр • Быстрый</p>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Формат видео -->
+                <div>
+                    <label class="block text-sm font-medium text-dark-300 mb-3">Формат видео</label>
+                    <div class="grid grid-cols-3 gap-3">
+                        <button type="button" class="format-btn px-4 py-6 bg-dark-800/50 rounded-xl border-2 border-brand-500 bg-brand-500/10 flex flex-col items-center gap-2 transition-all" data-format="9:16" onclick="MVP.setFormat('9:16')">
+                            <div class="w-6 h-10 border-2 border-brand-400 rounded"></div>
+                            <span class="text-sm text-white font-medium">9:16</span>
+                            <span class="text-[10px] text-dark-500">TikTok / Reels</span>
+                        </button>
+                        <button type="button" class="format-btn px-4 py-6 bg-dark-800/50 rounded-xl border-2 border-white/10 flex flex-col items-center gap-2 transition-all" data-format="1:1" onclick="MVP.setFormat('1:1')">
+                            <div class="w-8 h-8 border-2 border-dark-400 rounded"></div>
+                            <span class="text-sm text-dark-300 font-medium">1:1</span>
+                            <span class="text-[10px] text-dark-500">Instagram</span>
+                        </button>
+                        <button type="button" class="format-btn px-4 py-6 bg-dark-800/50 rounded-xl border-2 border-white/10 flex flex-col items-center gap-2 transition-all" data-format="16:9" onclick="MVP.setFormat('16:9')">
+                            <div class="w-10 h-6 border-2 border-dark-400 rounded"></div>
+                            <span class="text-sm text-dark-300 font-medium">16:9</span>
+                            <span class="text-[10px] text-dark-500">YouTube</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Стиль субтитров -->
+                <div>
+                    <label class="block text-sm font-medium text-dark-300 mb-3">Стиль субтитров</label>
+                    <div class="space-y-2">
+                        <button type="button" class="subtitle-btn w-full p-4 bg-dark-800/50 rounded-xl border-2 border-brand-500 bg-brand-500/10 text-left flex items-center justify-between transition-all" data-style="hormozi" onclick="MVP.setSubtitleStyle('hormozi')">
+                            <div>
+                                <span class="text-sm text-white font-bold">Стиль Hormozi</span>
+                                <p class="text-xs text-dark-500">Жёлтый текст, чёрная обводка, анимация</p>
+                            </div>
+                        </button>
+                        <button type="button" class="subtitle-btn w-full p-4 bg-dark-800/50 rounded-xl border-2 border-white/10 text-left flex items-center justify-between transition-all" data-style="clean" onclick="MVP.setSubtitleStyle('clean')">
+                            <div>
+                                <span class="text-sm text-white font-medium">Чистый</span>
+                                <p class="text-xs text-dark-500">Белый текст с тенью</p>
+                            </div>
+                        </button>
+                        <button type="button" class="subtitle-btn w-full p-4 bg-dark-800/50 rounded-xl border-2 border-white/10 text-left flex items-center justify-between transition-all" data-style="neon" onclick="MVP.setSubtitleStyle('neon')">
+                            <div>
+                                <span class="text-sm text-white font-medium">Неон</span>
+                                <p class="text-xs text-dark-500">Светящийся голубой эффект</p>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Художественный стиль (scrollable gallery) -->
+                <div>
+                    <label class="block text-sm font-medium text-dark-300 mb-3">Визуальный стиль</label>
+                    <p class="text-xs text-dark-500 mb-3">Выберите художественный стиль для генерации изображений</p>
+                    <div class="art-styles-gallery flex gap-3 overflow-x-auto pb-3 scrollbar-thin" style="scroll-snap-type: x mandatory;">
+                        <div class="art-style-card flex-shrink-0 cursor-pointer rounded-xl border-2 border-brand-500 bg-brand-500/10 overflow-hidden transition-all hover:scale-105" data-style="photorealism" onclick="MVP.setArtStyle('photorealism')" style="width: 120px; scroll-snap-align: start;">
+                            <div class="aspect-square bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center"><span class="text-3xl">📷</span></div>
+                            <div class="p-2 text-center"><span class="text-xs font-medium text-white">Фотореализм</span></div>
+                        </div>
+                        <div class="art-style-card flex-shrink-0 cursor-pointer rounded-xl border-2 border-white/10 overflow-hidden transition-all hover:scale-105 hover:border-brand-400" data-style="anime" onclick="MVP.setArtStyle('anime')" style="width: 120px; scroll-snap-align: start;">
+                            <div class="aspect-square bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center"><span class="text-3xl">🎌</span></div>
+                            <div class="p-2 text-center"><span class="text-xs font-medium text-white">Аниме</span></div>
+                        </div>
+                        <div class="art-style-card flex-shrink-0 cursor-pointer rounded-xl border-2 border-white/10 overflow-hidden transition-all hover:scale-105 hover:border-brand-400" data-style="ghibli" onclick="MVP.setArtStyle('ghibli')" style="width: 120px; scroll-snap-align: start;">
+                            <div class="aspect-square bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center"><span class="text-3xl">🏯</span></div>
+                            <div class="p-2 text-center"><span class="text-xs font-medium text-white">Ghibli</span></div>
+                        </div>
+                        <div class="art-style-card flex-shrink-0 cursor-pointer rounded-xl border-2 border-white/10 overflow-hidden transition-all hover:scale-105 hover:border-brand-400" data-style="disney" onclick="MVP.setArtStyle('disney')" style="width: 120px; scroll-snap-align: start;">
+                            <div class="aspect-square bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center"><span class="text-3xl">🏰</span></div>
+                            <div class="p-2 text-center"><span class="text-xs font-medium text-white">Disney</span></div>
+                        </div>
+                        <div class="art-style-card flex-shrink-0 cursor-pointer rounded-xl border-2 border-white/10 overflow-hidden transition-all hover:scale-105 hover:border-brand-400" data-style="comic" onclick="MVP.setArtStyle('comic')" style="width: 120px; scroll-snap-align: start;">
+                            <div class="aspect-square bg-gradient-to-br from-red-500 to-yellow-500 flex items-center justify-center"><span class="text-3xl">💥</span></div>
+                            <div class="p-2 text-center"><span class="text-xs font-medium text-white">Комикс</span></div>
+                        </div>
+                        <div class="art-style-card flex-shrink-0 cursor-pointer rounded-xl border-2 border-white/10 overflow-hidden transition-all hover:scale-105 hover:border-brand-400" data-style="minecraft" onclick="MVP.setArtStyle('minecraft')" style="width: 120px; scroll-snap-align: start;">
+                            <div class="aspect-square bg-gradient-to-br from-green-600 to-emerald-800 flex items-center justify-center"><span class="text-3xl">⛏️</span></div>
+                            <div class="p-2 text-center"><span class="text-xs font-medium text-white">Minecraft</span></div>
+                        </div>
+                        <div class="art-style-card flex-shrink-0 cursor-pointer rounded-xl border-2 border-white/10 overflow-hidden transition-all hover:scale-105 hover:border-brand-400" data-style="lego" onclick="MVP.setArtStyle('lego')" style="width: 120px; scroll-snap-align: start;">
+                            <div class="aspect-square bg-gradient-to-br from-yellow-400 to-red-500 flex items-center justify-center"><span class="text-3xl">🧱</span></div>
+                            <div class="p-2 text-center"><span class="text-xs font-medium text-white">LEGO</span></div>
+                        </div>
+                        <div class="art-style-card flex-shrink-0 cursor-pointer rounded-xl border-2 border-white/10 overflow-hidden transition-all hover:scale-105 hover:border-brand-400" data-style="gtav" onclick="MVP.setArtStyle('gtav')" style="width: 120px; scroll-snap-align: start;">
+                            <div class="aspect-square bg-gradient-to-br from-orange-500 to-pink-600 flex items-center justify-center"><span class="text-3xl">🚗</span></div>
+                            <div class="p-2 text-center"><span class="text-xs font-medium text-white">GTA V</span></div>
+                        </div>
+                        <div class="art-style-card flex-shrink-0 cursor-pointer rounded-xl border-2 border-white/10 overflow-hidden transition-all hover:scale-105 hover:border-brand-400" data-style="watercolor" onclick="MVP.setArtStyle('watercolor')" style="width: 120px; scroll-snap-align: start;">
+                            <div class="aspect-square bg-gradient-to-br from-cyan-300 to-blue-400 flex items-center justify-center"><span class="text-3xl">🎨</span></div>
+                            <div class="p-2 text-center"><span class="text-xs font-medium text-white">Акварель</span></div>
+                        </div>
+                        <div class="art-style-card flex-shrink-0 cursor-pointer rounded-xl border-2 border-white/10 overflow-hidden transition-all hover:scale-105 hover:border-brand-400" data-style="expressionism" onclick="MVP.setArtStyle('expressionism')" style="width: 120px; scroll-snap-align: start;">
+                            <div class="aspect-square bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center"><span class="text-3xl">🌀</span></div>
+                            <div class="p-2 text-center"><span class="text-xs font-medium text-white">Экспрессия</span></div>
+                        </div>
+                        <div class="art-style-card flex-shrink-0 cursor-pointer rounded-xl border-2 border-white/10 overflow-hidden transition-all hover:scale-105 hover:border-brand-400" data-style="charcoal" onclick="MVP.setArtStyle('charcoal')" style="width: 120px; scroll-snap-align: start;">
+                            <div class="aspect-square bg-gradient-to-br from-gray-600 to-gray-900 flex items-center justify-center"><span class="text-3xl">✏️</span></div>
+                            <div class="p-2 text-center"><span class="text-xs font-medium text-white">Уголь</span></div>
+                        </div>
+                        <div class="art-style-card flex-shrink-0 cursor-pointer rounded-xl border-2 border-white/10 overflow-hidden transition-all hover:scale-105 hover:border-brand-400" data-style="pixel" onclick="MVP.setArtStyle('pixel')" style="width: 120px; scroll-snap-align: start;">
+                            <div class="aspect-square bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center"><span class="text-3xl">👾</span></div>
+                            <div class="p-2 text-center"><span class="text-xs font-medium text-white">Пиксель</span></div>
+                        </div>
+                        <div class="art-style-card flex-shrink-0 cursor-pointer rounded-xl border-2 border-white/10 overflow-hidden transition-all hover:scale-105 hover:border-brand-400" data-style="creepy" onclick="MVP.setArtStyle('creepy')" style="width: 120px; scroll-snap-align: start;">
+                            <div class="aspect-square bg-gradient-to-br from-gray-800 to-red-900 flex items-center justify-center"><span class="text-3xl">👻</span></div>
+                            <div class="p-2 text-center"><span class="text-xs font-medium text-white">Жуткий</span></div>
+                        </div>
+                        <div class="art-style-card flex-shrink-0 cursor-pointer rounded-xl border-2 border-white/10 overflow-hidden transition-all hover:scale-105 hover:border-brand-400" data-style="childrens" onclick="MVP.setArtStyle('childrens')" style="width: 120px; scroll-snap-align: start;">
+                            <div class="aspect-square bg-gradient-to-br from-pink-300 to-yellow-300 flex items-center justify-center"><span class="text-3xl">📚</span></div>
+                            <div class="p-2 text-center"><span class="text-xs font-medium text-white">Детская</span></div>
+                        </div>
+                    </div>
+                    <p class="text-[10px] text-dark-600 mt-1">← Прокрутите для просмотра всех 14 стилей →</p>
+                </div>
+
+                <!-- Голос и Длительность -->
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-dark-300 mb-2">Голос озвучки</label>
+                        <select id="voice" class="w-full px-4 py-3 bg-dark-800/50 border border-white/10 rounded-xl text-white focus:outline-none focus:border-brand-500">
+                            <option value="ru-RU-DmitryNeural">🎤 Дмитрий (Муж, RU)</option>
+                            <option value="ru-RU-SvetlanaNeural">🎤 Светлана (Жен, RU)</option>
+                            <option value="en-US-GuyNeural">🎤 Guy (Муж, EN)</option>
+                            <option value="en-US-JennyNeural">🎤 Jenny (Жен, EN)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-dark-300 mb-2">Длительность</label>
+                        <select id="duration" class="w-full px-4 py-3 bg-dark-800/50 border border-white/10 rounded-xl text-white focus:outline-none focus:border-brand-500">
+                            <option value="30">30 секунд</option>
+                            <option value="60" selected>60 секунд</option>
+                            <option value="90">90 секунд</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Фоновая музыка -->
+                <div class="flex items-center justify-between p-4 bg-dark-800/30 rounded-xl">
+                    <div class="flex items-center gap-3">
+                        <span class="text-xl">🎵</span>
+                        <div>
+                            <span class="text-sm text-white font-medium">Фоновая музыка</span>
+                            <p class="text-xs text-dark-500">Royalty-free музыка</p>
+                        </div>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="bg-music" checked class="sr-only peer">
+                        <div class="w-11 h-6 bg-dark-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-600"></div>
+                    </label>
+                </div>
+
+                <!-- Подготовить сценарий Button -->
+                <button onclick="MVP.prepareScript()" id="btn-prepare"
+                        class="w-full px-6 py-4 bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white font-bold text-lg rounded-xl transition-all flex items-center justify-center gap-3">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                    Подготовить сценарий
+                </button>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!-- ШАГ 2: ПРЕВЬЮ И РЕДАКТИРОВАНИЕ СЦЕНАРИЯ -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <div id="step-preview" class="w-1/2 p-8 overflow-y-auto scrollbar-thin hidden">
+            <div class="max-w-2xl mx-auto">
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl flex items-center justify-center">
+                        <span class="text-white text-lg">✏️</span>
+                    </div>
+                    <div class="flex-1">
+                        <h2 class="text-lg font-bold text-white">Шаг 2: Редактирование</h2>
+                        <p class="text-xs text-dark-400">Отредактируйте сценарий перед генерацией</p>
+                    </div>
+                    <button onclick="MVP.backToSettings()" class="text-sm text-dark-400 hover:text-white flex items-center gap-1">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+                        </svg>
+                        Назад
+                    </button>
+                </div>
+
+                <!-- Script Title -->
+                <div class="mb-6">
+                    <div class="glass rounded-xl p-4">
+                        <label class="block text-xs text-dark-400 mb-2">Заголовок видео</label>
+                        <h3 id="script-title" class="text-2xl font-bold text-white">Заголовок</h3>
+                    </div>
+                </div>
+
+                <!-- Segments List -->
+                <div id="segments-container" class="space-y-4 mb-6">
+                    <!-- Segments will be rendered here -->
+                </div>
+
+                <!-- Generate Video Button -->
+                <div class="sticky bottom-0 pt-4 pb-2 bg-gradient-to-t from-dark-950 to-transparent">
+                    <button onclick="MVP.generateVideo()" id="btn-generate"
+                            class="w-full px-6 py-4 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold text-lg rounded-xl transition-all flex items-center justify-center gap-3 shadow-lg">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"></path>
+                        </svg>
+                        Создать видео
+                    </button>
+                    <p class="text-xs text-center text-dark-500 mt-2">
+                        💡 Вы можете редактировать любой сегмент перед генерацией
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!-- Right Panel: Progress OR Empty State OR Recent Jobs -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <div class="w-1/2 p-8 overflow-y-auto scrollbar-thin bg-dark-950/50">
+            <!-- Progress -->
+            <div id="job-progress" class="hidden max-w-md mx-auto">
+                <div class="glass rounded-2xl p-8 text-center">
+                    <div class="relative w-32 h-32 mx-auto mb-6">
+                        <svg class="progress-ring w-32 h-32">
+                            <circle cx="64" cy="64" r="50" stroke="rgba(255,255,255,0.1)" stroke-width="8" fill="none"/>
+                            <circle id="progress-circle" cx="64" cy="64" r="50" stroke="url(#gradient)" stroke-width="8" fill="none"/>
+                            <defs>
+                                <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                                    <stop offset="0%" stop-color="#a855f7"/>
+                                    <stop offset="100%" stop-color="#6366f1"/>
+                                </linearGradient>
+                            </defs>
+                        </svg>
+                        <div class="absolute inset-0 flex items-center justify-center">
+                            <span id="progress-percent" class="text-3xl font-bold text-white">0%</span>
+                        </div>
+                    </div>
+                    <h3 class="text-xl font-bold text-white mb-2">Генерация видео</h3>
+                    <p id="progress-message" class="text-dark-400 mb-6">Инициализация...</p>
+                    <div class="flex justify-center gap-2 mb-6">
+                        <div class="step-dot w-3 h-3 rounded-full bg-dark-600" data-step="script"></div>
+                        <div class="step-dot w-3 h-3 rounded-full bg-dark-600" data-step="audio"></div>
+                        <div class="step-dot w-3 h-3 rounded-full bg-dark-600" data-step="footage"></div>
+                        <div class="step-dot w-3 h-3 rounded-full bg-dark-600" data-step="render"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Completed Video Preview -->
+            <div id="video-result" class="hidden max-w-md mx-auto">
+                <div class="glass rounded-2xl overflow-hidden">
+                    <div class="aspect-[9/16] bg-black relative">
+                        <video id="result-video" class="w-full h-full object-contain" controls></video>
+                    </div>
+                    <div class="p-4 space-y-3">
+                        <h3 id="result-title" class="text-lg font-bold text-white">Название видео</h3>
+                        <div class="flex gap-3">
+                            <button onclick="MVP.download()" class="flex-1 px-4 py-3 bg-gradient-to-r from-brand-600 to-indigo-600 text-white font-semibold rounded-xl flex items-center justify-center gap-2">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                                </svg>
+                                Скачать MP4
+                            </button>
+                            <button onclick="MVP.createNew()" class="px-4 py-3 bg-white/5 hover:bg-white/10 text-white font-medium rounded-xl border border-white/10">
+                                Новое видео
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Empty State -->
+            <div id="empty-state" class="max-w-md mx-auto text-center py-8">
+                <div class="w-24 h-24 bg-dark-800/50 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                    <svg class="w-12 h-12 text-dark-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                    </svg>
+                </div>
+                <h3 class="text-xl font-bold text-white mb-2">Создайте своё первое видео</h3>
+                <p class="text-dark-400 mb-6">Введите тему, настройте параметры и нажмите «Подготовить сценарий»</p>
+
+                <div class="bg-dark-800/30 rounded-xl p-4 text-left mb-6">
+                    <h4 class="text-sm font-semibold text-white mb-3">Как это работает:</h4>
+                    <div class="space-y-2 text-sm text-dark-400">
+                        <div class="flex items-center gap-2">
+                            <span class="w-5 h-5 bg-brand-500/20 text-brand-400 rounded-full flex items-center justify-center text-xs font-bold">1</span>
+                            <span>Настройте параметры и подготовьте сценарий</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="w-5 h-5 bg-brand-500/20 text-brand-400 rounded-full flex items-center justify-center text-xs font-bold">2</span>
+                            <span>Отредактируйте текст перед генерацией</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="w-5 h-5 bg-brand-500/20 text-brand-400 rounded-full flex items-center justify-center text-xs font-bold">3</span>
+                            <span>Нажмите "Создать видео"</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="w-5 h-5 bg-brand-500/20 text-brand-400 rounded-full flex items-center justify-center text-xs font-bold">4</span>
+                            <span>Получите идеальное видео!</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Jobs -->
+            <div id="recent-jobs" class="max-w-md mx-auto mt-8">
+                <h3 class="text-sm font-semibold text-dark-400 uppercase tracking-wider mb-4">Последние задания</h3>
+                <div id="jobs-list" class="space-y-3">
+                    <!-- Jobs will be rendered here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const MVP = {
+    currentJobId: null,
+    pollInterval: null,
+    scriptData: null,
+    settings: {
+        format: '9:16',
+        subtitleStyle: 'hormozi',
+        artStyle: 'photorealism',
+        imageProvider: 'dalle'
+    },
+
+    // ═══════════════════════════════════════════════════════════════
+    // Settings Methods
+    // ═══════════════════════════════════════════════════════════════
+    setImageProvider(provider) {
+        this.settings.imageProvider = provider;
+        document.querySelectorAll('.provider-btn').forEach(btn => {
+            if (btn.dataset.provider === provider) {
+                btn.classList.add('border-brand-500', 'bg-brand-500/10');
+                btn.classList.remove('border-white/10');
+            } else {
+                btn.classList.remove('border-brand-500', 'bg-brand-500/10');
+                btn.classList.add('border-white/10');
+            }
+        });
+    },
+
+    setFormat(format) {
+        this.settings.format = format;
+        document.querySelectorAll('.format-btn').forEach(btn => {
+            if (btn.dataset.format === format) {
+                btn.classList.add('border-brand-500', 'bg-brand-500/10');
+                btn.classList.remove('border-white/10');
+            } else {
+                btn.classList.remove('border-brand-500', 'bg-brand-500/10');
+                btn.classList.add('border-white/10');
+            }
+        });
+    },
+
+    setSubtitleStyle(style) {
+        this.settings.subtitleStyle = style;
+        document.querySelectorAll('.subtitle-btn').forEach(btn => {
+            if (btn.dataset.style === style) {
+                btn.classList.add('border-brand-500', 'bg-brand-500/10');
+                btn.classList.remove('border-white/10');
+            } else {
+                btn.classList.remove('border-brand-500', 'bg-brand-500/10');
+                btn.classList.add('border-white/10');
+            }
+        });
+    },
+
+    setArtStyle(style) {
+        this.settings.artStyle = style;
+        document.querySelectorAll('.art-style-card').forEach(card => {
+            if (card.dataset.style === style) {
+                card.classList.add('border-brand-500', 'bg-brand-500/10');
+                card.classList.remove('border-white/10');
+            } else {
+                card.classList.remove('border-brand-500', 'bg-brand-500/10');
+                card.classList.add('border-white/10');
+            }
+        });
+    },
+
+    // ═══════════════════════════════════════════════════════════════
+    // STEP 1: Prepare Script
+    // ═══════════════════════════════════════════════════════════════
+    async prepareScript() {
+        const topic = document.getElementById('topic').value.trim();
+        if (!topic) {
+            App.showToast('Пожалуйста, введите тему', 'error');
+            return;
+        }
+
+        const params = {
+            topic,
+            style: document.getElementById('style').value,
+            language: document.getElementById('language').value,
+            voice: document.getElementById('voice').value,
+            duration: parseInt(document.getElementById('duration').value),
+            format: this.settings.format,
+            subtitle_style: this.settings.subtitleStyle,
+            art_style: this.settings.artStyle,
+            background_music: document.getElementById('bg-music').checked,
+            music_volume: 0.2,
+            image_provider: this.settings.imageProvider
+        };
+
+        const btn = document.getElementById('btn-prepare');
+        const originalHTML = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<svg class="animate-spin h-5 w-5 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Генерация...';
+
+        try {
+            const response = await fetch('/api/faceless/preview-script', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(params)
+            });
+
+            const result = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(result.detail || 'Ошибка при подготовке сценария');
+            }
+
+            this.scriptData = result.script;
+            this.showScriptPreview(result.script);
+            App.showToast('Сценарий готов! Можете редактировать.', 'success');
+
+        } catch (e) {
+            App.showToast('Ошибка: ' + e.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalHTML;
+        }
+    },
+
+    // ═══════════════════════════════════════════════════════════════
+    // Show Script Preview
+    // ═══════════════════════════════════════════════════════════════
+    showScriptPreview(script) {
+        document.getElementById('script-title').textContent = script.title || 'Без заголовка';
+
+        const container = document.getElementById('segments-container');
+        container.innerHTML = '';
+
+        script.segments.forEach((segment, index) => {
+            const segmentCard = document.createElement('div');
+            segmentCard.className = 'segment-card p-4 rounded-xl';
+            
+            const typeEmoji = this.getSegmentEmoji(segment.segment_type);
+            const charCount = segment.text.length;
+            const maxChars = 300;
+            const charClass = charCount > maxChars * 0.9 ? 'danger' : (charCount > maxChars * 0.7 ? 'warning' : '');
+
+            segmentCard.innerHTML = `
+                <div class="flex items-center justify-between mb-2">
+                    <h4 class="text-sm font-semibold text-white flex items-center gap-2">
+                        <span>${typeEmoji}</span>
+                        Сегмент ${index + 1}
+                        <span class="text-[10px] text-dark-500 bg-dark-700 px-2 py-0.5 rounded">${segment.segment_type}</span>
+                    </h4>
+                    <span class="text-xs text-dark-500">${segment.duration}s</span>
+                </div>
+                
+                <textarea 
+                    class="segment-textarea" 
+                    id="segment-${index}"
+                    rows="3"
+                    maxlength="${maxChars}"
+                    oninput="MVP.updateCharCount(${index})"
+                >${segment.text}</textarea>
+                
+                <div class="char-count ${charClass}" id="char-count-${index}">
+                    ${charCount} / ${maxChars} символов
+                </div>
+                
+                <div class="visual-hint">
+                    🎨 <strong>Visual:</strong> ${this.truncate(segment.visual_prompt, 100)}
+                </div>
+            `;
+
+            container.appendChild(segmentCard);
+        });
+
+        document.getElementById('step-settings').classList.add('hidden');
+        document.getElementById('empty-state').classList.add('hidden');
+        document.getElementById('step-preview').classList.remove('hidden');
+    },
+
+    updateCharCount(index) {
+        const textarea = document.getElementById(`segment-${index}`);
+        const counter = document.getElementById(`char-count-${index}`);
+        const charCount = textarea.value.length;
+        const maxChars = parseInt(textarea.maxLength);
+
+        counter.textContent = `${charCount} / ${maxChars} символов`;
+        
+        counter.className = 'char-count';
+        if (charCount > maxChars * 0.9) {
+            counter.classList.add('danger');
+        } else if (charCount > maxChars * 0.7) {
+            counter.classList.add('warning');
+        }
+    },
+
+    // ═══════════════════════════════════════════════════════════════
+    // STEP 2: Generate Video
+    // ═══════════════════════════════════════════════════════════════
+    async generateVideo() {
+        const editedSegments = [];
+        const textareas = document.querySelectorAll('[id^="segment-"]');
+        
+        textareas.forEach((textarea, index) => {
+            editedSegments.push({
+                index: index,
+                text: textarea.value
+            });
+        });
+
+        const params = {
+            topic: document.getElementById('topic').value,
+            style: document.getElementById('style').value,
+            language: document.getElementById('language').value,
+            voice: document.getElementById('voice').value,
+            duration: parseInt(document.getElementById('duration').value),
+            format: this.settings.format,
+            subtitle_style: this.settings.subtitleStyle,
+            art_style: this.settings.artStyle,
+            background_music: document.getElementById('bg-music').checked,
+            music_volume: 0.2,
+            image_provider: this.settings.imageProvider,
+            edited_segments: editedSegments
+        };
+
+        const btn = document.getElementById('btn-generate');
+        const originalHTML = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<svg class="animate-spin h-5 w-5 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Запуск...';
+
+        try {
+            const response = await fetch('/api/faceless/generate-from-script', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(params)
+            });
+
+            const result = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(result.detail || 'Ошибка генерации');
+            }
+
+            this.currentJobId = result.job_id;
+            
+            document.getElementById('step-preview').classList.add('hidden');
+            document.getElementById('empty-state').classList.add('hidden');
+            document.getElementById('recent-jobs').classList.add('hidden');
+            document.getElementById('job-progress').classList.remove('hidden');
+            
+            this.startPolling();
+            App.showToast('Генерация запущена!', 'success');
+
+        } catch (e) {
+            App.showToast('Ошибка: ' + e.message, 'error');
+            btn.disabled = false;
+            btn.innerHTML = originalHTML;
+        }
+    },
+
+    // ═══════════════════════════════════════════════════════════════
+    // Polling
+    // ═══════════════════════════════════════════════════════════════
+    startPolling() {
+        if (this.pollInterval) clearInterval(this.pollInterval);
+
+        this.pollInterval = setInterval(async () => {
+            try {
+                const response = await fetch(`/api/faceless/status/${this.currentJobId}`);
+                const status = await response.json();
+
+                this.updateProgress(status);
+
+                if (status.status === 'completed') {
+                    clearInterval(this.pollInterval);
+                    this.showResult(status);
+                } else if (status.status === 'failed') {
+                    clearInterval(this.pollInterval);
+                    App.showToast('Ошибка: ' + (status.error || 'Генерация не удалась'), 'error');
+                    this.backToSettings();
+                }
+            } catch (e) {
+                console.error('Polling error:', e);
+            }
+        }, 2000);
+    },
+
+    updateProgress(status) {
+        const percent = Math.round(status.progress);
+        document.getElementById('progress-percent').textContent = `${percent}%`;
+        document.getElementById('progress-message').textContent = status.progress_message;
+
+        const circle = document.getElementById('progress-circle');
+        const circumference = 314;
+        const offset = circumference - (percent / 100) * circumference;
+        circle.style.strokeDashoffset = offset;
+
+        const dots = document.querySelectorAll('.step-dot');
+        if (status.status === 'generating_script' || percent >= 20) {
+            dots[0].classList.add('active');
+        }
+        if (status.status === 'generating_audio' || percent >= 40) {
+            dots[0].classList.remove('active');
+            dots[0].classList.add('completed');
+            dots[1].classList.add('active');
+        }
+        if (status.status === 'downloading_footage' || percent >= 70) {
+            dots[1].classList.remove('active');
+            dots[1].classList.add('completed');
+            dots[2].classList.add('active');
+        }
+        if (status.status === 'rendering' || percent >= 90) {
+            dots[2].classList.remove('active');
+            dots[2].classList.add('completed');
+            dots[3].classList.add('active');
+        }
+    },
+
+    showResult(status) {
+        document.getElementById('job-progress').classList.add('hidden');
+        document.getElementById('video-result').classList.remove('hidden');
+
+        const video = document.getElementById('result-video');
+        video.src = `/api/faceless/download/${this.currentJobId}`;
+
+        document.getElementById('result-title').textContent = status.script?.title || status.topic;
+
+        App.showToast('Видео успешно сгенерировано! 🎉', 'success');
+        this.loadRecentJobs();
+    },
+
+    // ═══════════════════════════════════════════════════════════════
+    // Navigation
+    // ═══════════════════════════════════════════════════════════════
+    backToSettings() {
+        document.getElementById('step-preview').classList.add('hidden');
+        document.getElementById('step-settings').classList.remove('hidden');
+        document.getElementById('empty-state').classList.remove('hidden');
+        document.getElementById('recent-jobs').classList.remove('hidden');
+        const btn = document.getElementById('btn-generate');
+        btn.disabled = false;
+    },
+
+    createNew() {
+        this.currentJobId = null;
+        this.scriptData = null;
+        
+        document.getElementById('video-result').classList.add('hidden');
+        document.getElementById('step-settings').classList.remove('hidden');
+        document.getElementById('empty-state').classList.remove('hidden');
+        document.getElementById('recent-jobs').classList.remove('hidden');
+        
+        document.getElementById('topic').value = '';
+        this.loadRecentJobs();
+    },
+
+    download() {
+        if (this.currentJobId) {
+            window.open(`/api/faceless/download/${this.currentJobId}`, '_blank');
+        }
+    },
+
+    // ═══════════════════════════════════════════════════════════════
+    // Recent Jobs
+    // ═══════════════════════════════════════════════════════════════
+    async loadRecentJobs() {
+        try {
+            const response = await fetch('/api/faceless/recent?limit=10');
+            const data = await response.json();
+            const jobs = data.jobs || [];
+
+            const list = document.getElementById('jobs-list');
+            if (!jobs.length) {
+                list.innerHTML = '<p class="text-sm text-dark-500">Нет недавних заданий</p>';
+                return;
+            }
+
+            list.innerHTML = jobs.map(job => `
+                <div class="job-card glass rounded-xl p-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-medium text-white truncate flex-1 mr-2">${job.topic}</span>
+                        <span class="px-2 py-0.5 rounded text-xs ${this.getStatusClass(job.status)}">${job.status}</span>
+                    </div>
+                    <div class="flex items-center justify-between text-xs text-dark-500 mb-3">
+                        <span>${this.formatDate(job.created_at)}</span>
+                        ${job.status === 'completed' ? '<span class="text-green-400">Готово</span>' : ''}
+                    </div>
+                    ${job.status === 'completed' ? `
+                        <div class="flex gap-2">
+                            <button onclick="MVP.loadJob('${job.job_id}')" class="flex-1 px-3 py-1.5 bg-white/5 hover:bg-white/10 text-white text-xs font-medium rounded-lg flex items-center justify-center gap-1">
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                                Просмотр
+                            </button>
+                            <button onclick="MVP.downloadJob('${job.job_id}')" class="px-3 py-1.5 bg-green-600/20 hover:bg-green-600/30 text-green-400 text-xs font-medium rounded-lg flex items-center justify-center">
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    ` : ''}
+                </div>
+            `).join('');
+
+        } catch (e) {
+            console.error('Failed to load jobs:', e);
+        }
+    },
+
+    async loadJob(jobId) {
+        try {
+            const response = await fetch(`/api/faceless/status/${jobId}`);
+            const status = await response.json();
+            
+            this.currentJobId = jobId;
+            document.getElementById('empty-state').classList.add('hidden');
+            document.getElementById('recent-jobs').classList.add('hidden');
+            this.showResult(status);
+        } catch (e) {
+            App.showToast('Ошибка загрузки видео', 'error');
+        }
+    },
+
+    downloadJob(jobId) {
+        window.open(`/api/faceless/download/${jobId}`, '_blank');
+    },
+
+    getStatusClass(status) {
+        switch (status) {
+            case 'completed': return 'bg-green-500/20 text-green-400';
+            case 'failed': return 'bg-red-500/20 text-red-400';
+            case 'pending': return 'bg-yellow-500/20 text-yellow-400';
+            default: return 'bg-blue-500/20 text-blue-400';
+        }
+    },
+
+    formatDate(dateStr) {
+        const date = new Date(dateStr);
+        const now = new Date();
+        const diff = Math.floor((now - date) / 1000);
+
+        if (diff < 60) return 'только что';
+        if (diff < 3600) return `${Math.floor(diff / 60)} мин назад`;
+        if (diff < 86400) return `${Math.floor(diff / 3600)} ч назад`;
+        return date.toLocaleDateString('ru-RU');
+    },
+
+    // ═══════════════════════════════════════════════════════════════
+    // Utilities
+    // ═══════════════════════════════════════════════════════════════
+    getSegmentEmoji(type) {
+        const emojiMap = {
+            'hook': '🎣',
+            'content': '📝',
+            'climax': '⚡',
+            'conclusion': '🎬',
+            'cta': '📢'
+        };
+        return emojiMap[type] || '📄';
+    },
+
+    truncate(text, maxLength) {
+        if (text.length <= maxLength) return text;
+        return text.substring(0, maxLength) + '...';
+    }
+};
+
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('✅ Faceless MVP Ready!');
+    MVP.loadRecentJobs();
+});
+</script>
+{% endblock %}

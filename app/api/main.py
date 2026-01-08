@@ -25,8 +25,8 @@ from fastapi.staticfiles import StaticFiles
 
 from app.auth import AuthMiddleware
 
-from .routes import health_router, render_router, admin_router, clips_router, youtube_router, video_router, broll_router, god_mode_router, faceless_router, portraits_router
-from .routes.musicvideo import router as musicvideo_router
+from .routes import health_router, render_router, admin_router, clips_router, youtube_router, video_router, broll_router, god_mode_router, faceless_router
+# REMOVED: portraits_router, musicvideo_router (будут добавлены позже)
 from .exceptions import APIError, api_error_handler, generic_exception_handler
 from app.admin_ui import admin_ui_router
 from app.saas_ui import saas_ui_router  # New SaaS UI (replaces public_ui)
@@ -113,8 +113,7 @@ def create_app(
     app.include_router(broll_router)
     app.include_router(god_mode_router)
     app.include_router(faceless_router)  # Faceless video generation (AutoShorts clone)
-    app.include_router(musicvideo_router)  # Music Video Generator
-    app.include_router(portraits_router)  # AI Portraits with templates
+    # REMOVED: musicvideo_router, portraits_router (будут добавлены позже)
     app.include_router(admin_ui_router)
     app.include_router(saas_ui_router)  # New SaaS UI (replaces old public_ui)
     app.include_router(orchestration_router)
@@ -141,23 +140,20 @@ def create_app(
     shorts_dir.mkdir(parents=True, exist_ok=True)
     app.mount("/shorts", StaticFiles(directory=str(shorts_dir)), name="shorts")
 
-    # Mount templates directory for AI Portraits
-    templates_dir = Path(r"C:\dake\data\templates")
-    templates_dir.mkdir(parents=True, exist_ok=True)
-    app.mount("/templates", StaticFiles(directory=str(templates_dir)), name="templates")
-
-    # Mount musicvideo directory for Music Video Generator
-    musicvideo_dir = Path(r"C:\dake\data\musicvideo")
-    musicvideo_dir.mkdir(parents=True, exist_ok=True)
-    app.mount("/musicvideo_files", StaticFiles(directory=str(musicvideo_dir)), name="musicvideo_files")
+    # REMOVED: Templates and MusicVideo directories (будут добавлены позже)
+    # templates_dir = Path(r"C:\dake\data\templates")
+    # templates_dir.mkdir(parents=True, exist_ok=True)
+    # app.mount("/templates", StaticFiles(directory=str(templates_dir)), name="templates")
+    #
+    # musicvideo_dir = Path(r"C:\dake\data\musicvideo")
+    # musicvideo_dir.mkdir(parents=True, exist_ok=True)
+    # app.mount("/musicvideo_files", StaticFiles(directory=str(musicvideo_dir)), name="musicvideo_files")
 
     logger.info(f"Static files mounted:")
     logger.info(f"  /data -> {data_dir}")
     logger.info(f"  /outputs -> {outputs_dir}")
     logger.info(f"  /temp_images -> {temp_images_dir} (for editor)")
     logger.info(f"  /shorts -> {shorts_dir} (for YouTube clips)")
-    logger.info(f"  /templates -> {templates_dir} (for AI Portraits)")
-    logger.info(f"  /musicvideo_files -> {musicvideo_dir} (for Music Videos)")
 
     @app.get("/favicon.ico", include_in_schema=False)
     async def favicon():

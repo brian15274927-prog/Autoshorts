@@ -76,14 +76,16 @@ class TTSService:
     def __init__(
         self,
         voice: str = VoicePreset.RU_MALE_DMITRY,
-        rate: str = "+0%",
+        rate: str = "+12%",  # OPTIMIZED: 1.12x speed for dynamic pacing
         pitch: str = "+0Hz",
-        volume: str = "+0%"
+        volume: str = "+0%",
+        script_style: Optional[str] = None  # NEW: For style-based adjustments
     ):
         self.voice = voice
         self.rate = rate
         self.pitch = pitch
         self.volume = volume
+        self.script_style = script_style  # Store for pause control
 
     async def generate_audio(
         self,
@@ -100,6 +102,7 @@ class TTSService:
             output_path: Optional output file path
             voice: Override default voice
             rate: Override default rate (e.g., "+10%" for faster)
+                  If not provided, uses style-based rate
 
         Returns:
             TTSResult with audio path, duration, and word timings
@@ -109,7 +112,15 @@ class TTSService:
             output_path = str(TTS_OUTPUT_DIR / f"{uuid.uuid4()}.mp3")
 
         voice = voice or self.voice
-        rate = rate or self.rate
+        
+        # STYLE-BASED RATE: Use script style if available
+        if rate is None:
+            if self.script_style:
+                rate = self._get_rate_for_style(self.script_style)
+            else:
+                rate = self.rate
+        
+        logger.debug(f"[TTS] Generating with rate: {rate} (style: {self.script_style or 'default'})")
 
         # Use Python API directly (more reliable on Windows)
         return await self._generate_with_api(text, output_path, voice, rate)
@@ -303,19 +314,44 @@ class TTSService:
         return results
 
     def _get_rate_for_emotion(self, emotion: str) -> str:
-        """Get speaking rate based on emotion."""
+        """
+        Get speaking rate based on emotion.
+        
+        NOTE: Base rate is already +12%, these adjustments are ON TOP of that.
+        """
         rates = {
-            "excited": "+15%",
-            "calm": "-10%",
-            "serious": "-5%",
-            "funny": "+10%",
-            "inspirational": "+5%",
-            "neutral": "+0%",
-            "curious": "+5%",
-            "motivational": "+10%",
-            "friendly": "+5%",
+            "excited": "+18%",      # Fast + excited = even faster
+            "calm": "+5%",          # Calm but still dynamic (not slow)
+            "serious": "+8%",       # Serious but dynamic
+            "funny": "+15%",        # Funny = energetic
+            "inspirational": "+12%", # Standard optimized rate
+            "neutral": "+12%",      # Standard optimized rate
+            "curious": "+14%",      # Slightly faster for curiosity
+            "motivational": "+14%", # Motivational = energetic
+            "friendly": "+13%",     # Friendly and upbeat
         }
-        return rates.get(emotion, "+0%")
+        return rates.get(emotion, "+12%")
+    
+    def _get_rate_for_style(self, style: str) -> str:
+        """
+        Get speaking rate based on script style.
+        
+        STYLE-BASED OPTIMIZATION:
+        - VIRAL: Fast-paced, no long pauses (+ 18%)
+        - MOTIVATIONAL: Energetic, dynamic (+ 14%)
+        - DOCUMENTARY: Measured but not slow (+ 10%)
+        - EDUCATIONAL: Clear, steady pace (+ 12%)
+        """
+        style_rates = {
+            "viral": "+18%",         # FAST: Keep attention, no pauses
+            "motivational": "+14%",  # ENERGETIC: Inspiring, dynamic
+            "documentary": "+10%",   # MEASURED: Authoritative but flowing
+            "storytelling": "+12%",  # BALANCED: Standard storytelling pace
+            "educational": "+12%",   # CLEAR: Standard teaching pace
+            "mystery": "+8%",        # SLOWER: Build suspense with pauses
+            "historical": "+10%",    # MEASURED: Like documentary
+        }
+        return style_rates.get(style.lower(), "+12%")
 
     async def concatenate_audio(
         self,

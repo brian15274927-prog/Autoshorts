@@ -130,17 +130,30 @@ class NanoBananaService:
             # Use Gemini API for image generation
             url = f"{self.GOOGLE_API_URL}/{self.model_name}:generateContent?key={self.api_key}"
 
-            # Parse size for aspect ratio hint
+            # Parse size for aspect ratio hint and resolution
             aspect_hint = ""
-            if "1792" in size or "9:16" in size:
-                aspect_hint = "vertical portrait orientation (9:16 aspect ratio), "
-            elif "1792" in size and "x1024" in size:
+            width_hint = 1024
+            height_hint = 1024
+            
+            if "1792" in size or "9:16" in size or "x1920" in size:
+                aspect_hint = "VERTICAL portrait orientation (9:16 aspect ratio), 1080x1920 resolution, "
+                width_hint = 1080
+                height_hint = 1920
+            elif "1024x1792" in size:
+                aspect_hint = "VERTICAL portrait orientation (9:16 aspect ratio), 1024x1792 resolution, "
+                width_hint = 1024
+                height_hint = 1792
+            elif "1792x1024" in size or "16:9" in size:
                 aspect_hint = "horizontal landscape orientation (16:9 aspect ratio), "
+                width_hint = 1792
+                height_hint = 1024
 
-            # Enhanced prompt for better image generation
-            enhanced_prompt = f"Generate a high-quality, {aspect_hint}cinematic image: {prompt}"
+            # Enhanced prompt for better image generation with STRICT formatting
+            enhanced_prompt = f"{aspect_hint}Generate a high-quality cinematic image: {prompt}"
             if style == "vivid":
                 enhanced_prompt += " Make it vibrant and visually striking."
+            
+            logger.info(f"[NANOBANANA] Target resolution: {width_hint}x{height_hint}")
 
             # Gemini 2.0 Flash requires specific format for image generation
             payload = {
@@ -206,8 +219,8 @@ class NanoBananaService:
                 image_path=output_path,
                 prompt=prompt,
                 revised_prompt=enhanced_prompt,
-                width=1024,
-                height=1024,
+                width=width_hint,
+                height=height_hint,
                 segment_index=0
             )
 

@@ -92,6 +92,33 @@ class ScriptPreviewRequest(BaseModel):
     language: str = Field("ru")
     duration: int = Field(60, ge=15, le=180)
     art_style: str = Field("photorealism", description="Visual art style for prompts")
+    custom_idea: Optional[str] = Field(None, description="User's own idea/text")
+    idea_mode: str = Field("expand", description="How to process custom_idea")
+
+
+class EditedSegment(BaseModel):
+    """Edited segment from user."""
+    index: int = Field(..., description="Segment index")
+    text: str = Field(..., description="Edited text")
+
+
+class GenerateFromScriptRequest(BaseModel):
+    """Request to generate video from edited script."""
+    # Original parameters
+    topic: str = Field(..., description="Original topic")
+    style: str = Field("viral")
+    language: str = Field("ru")
+    voice: str = Field("ru-RU-DmitryNeural")
+    duration: int = Field(60, ge=15, le=180)
+    format: str = Field("9:16")
+    subtitle_style: str = Field("hormozi")
+    art_style: str = Field("photorealism")
+    background_music: bool = Field(True)
+    music_volume: float = Field(0.2)
+    image_provider: str = Field("dalle")
+    
+    # Edited segments from user
+    edited_segments: List[EditedSegment] = Field(..., description="User-edited segments")
 
 
 class StockSearchRequest(BaseModel):
@@ -994,7 +1021,9 @@ async def preview_script(request: ScriptPreviewRequest):
         style=style,
         language=request.language,
         duration_seconds=request.duration,
-        art_style=request.art_style
+        art_style=request.art_style,
+        custom_idea=request.custom_idea,  # Support custom user text!
+        idea_mode=request.idea_mode
     )
 
     # Convert to legacy format for response
@@ -1212,6 +1241,76 @@ async def analyze_viral_segments(youtube_url: str, max_segments: int = 5):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.post("/generate-from-script", response_model=GenerateFacelessResponse)
+async def generate_from_script(request: GenerateFromScriptRequest, x_user_id: str = "default"):
+    """
+    🎬 MVP: Generate video from user-edited script.
+    
+    FLOW:
+    1. User gets script preview from /preview-script
+    2. User edits segments in UI
+    3. User submits edited segments here → THIS ENDPOINT
+    4. System validates & generates video
+    
+    This gives users FULL CONTROL over script before generation!
+    """
+    from app.persistence.user_limits_repo import get_user_limits_repository
+    
+    # Check limits
+    limits_repo = get_user_limits_repository()
+    check = limits_repo.check_can_generate(x_user_id, request.duration)
+    
+    if not check["allowed"]:
+        raise HTTPException(status_code=429, detail={"error": "Rate limit exceeded"})
+    
+    logger.info("=" * 60)
+    logger.info(f"🎬 VIDEO FROM EDITED SCRIPT")
+    logger.info(f"   Topic: {request.topic}")
+    logger.info(f"   Segments: {len(request.edited_segments)}")
+    logger.info("=" * 60)
+    
+    # Build custom_idea from edited segments
+    edited_text = "\n\n".join([f"Segment {s.index + 1}:\n{s.text}" for s in request.edited_segments])
+    
+    engine = get_faceless_engine()
+    
+    try:
+        style = ScriptStyle(request.style) if request.style in [s.value for s in ScriptStyle] else ScriptStyle.VIRAL
+    except ValueError:
+        style = ScriptStyle.VIRAL
+    
+    # Generate video with edited script
+    job_id = await engine.create_faceless_video(
+        topic=request.topic,
+        style=style,
+        language=request.language,
+        voice=request.voice,
+        duration=request.duration,
+        format=request.format,
+        subtitle_style=request.subtitle_style,
+        art_style=request.art_style,
+        background_music=request.background_music,
+        music_volume=request.music_volume,
+        custom_idea=edited_text,  # User's edited script
+        idea_mode="strict",  # Keep user's text as-is!
+        image_provider=request.image_provider
+    )
+    
+    limits_repo.record_video_generation(x_user_id)
+    
+    logger.info(f"✅ Job created: {job_id}")
+    
+    return GenerateFacelessResponse(
+        job_id=job_id,
+        status="pending",
+        message=f"🎬 Видео с вашим сценарием запущено! Job ID: {job_id}"
+    )
+
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
 
 def _detect_hook(text: str) -> bool:
     """Detect if text contains a hook pattern."""

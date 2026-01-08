@@ -42,6 +42,10 @@ DATA_DIR = Path(__file__).parent.parent.parent / "data"
 FACELESS_DIR = DATA_DIR / "faceless"
 FACELESS_DIR.mkdir(parents=True, exist_ok=True)
 
+# CRITICAL FIX: Store background tasks to prevent garbage collection
+# Without this, asyncio.create_task() tasks can be discarded
+BACKGROUND_TASKS = set()
+
 
 def get_ffmpeg_path() -> str:
     """Get FFmpeg executable path - prioritize local installation."""
@@ -387,7 +391,10 @@ class FacelessEngine:
         logger.info(f"Job {job_id} persisted to SQLite database")
 
         # Start generation in background
-        asyncio.create_task(self._run_pipeline(job))
+        # CRITICAL FIX: Store task reference to prevent garbage collection
+        task = asyncio.create_task(self._run_pipeline(job))
+        BACKGROUND_TASKS.add(task)
+        task.add_done_callback(BACKGROUND_TASKS.discard)
 
         return job_id
 
@@ -492,7 +499,10 @@ class FacelessEngine:
         logger.info(f"[RESUME] Resuming job {job_id} from checkpoint: {checkpoint}")
 
         # Start pipeline with resume flag
-        asyncio.create_task(self._run_pipeline(job, resume=True))
+        # CRITICAL FIX: Store task reference to prevent garbage collection
+        task = asyncio.create_task(self._run_pipeline(job, resume=True))
+        BACKGROUND_TASKS.add(task)
+        task.add_done_callback(BACKGROUND_TASKS.discard)
 
         return True
 
