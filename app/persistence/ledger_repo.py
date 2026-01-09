@@ -63,6 +63,66 @@ class CreditLedgerRepository:
             related_job_id=related_job_id,
         )
 
+    def atomic_debit(
+        self,
+        user_id: str,
+        amount: int,
+        reason: CreditReason,
+        related_job_id: Optional[str] = None,
+    ) -> Optional[LedgerEntry]:
+        """
+        Atomically check and deduct credits in a single transaction.
+        Prevents race conditions where two concurrent requests could both pass
+        the credit check before either deducts.
+
+        Returns LedgerEntry if successful, None if insufficient credits.
+        """
+        if amount <= 0:
+            raise ValueError("Debit amount must be positive")
+
+        conn = get_connection()
+        now = datetime.utcnow().isoformat()
+
+        with transaction():
+            # Atomic check-and-update: only updates if credits >= amount
+            cursor = conn.execute(
+                """
+                UPDATE users
+                SET credits = credits - ?, updated_at = ?
+                WHERE user_id = ? AND credits >= ?
+                """,
+                (amount, now, user_id, amount)
+            )
+
+            # If no rows updated, insufficient credits
+            if cursor.rowcount == 0:
+                logger.warning(f"Atomic debit failed: user={user_id}, amount={amount} (insufficient credits)")
+                return None
+
+            # Record in ledger
+            cursor = conn.execute(
+                """
+                INSERT INTO credit_ledger (user_id, delta, reason, related_job_id, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (user_id, -amount, reason.value, related_job_id, now)
+            )
+            entry_id = cursor.lastrowid
+
+        logger.info(
+            f"Atomic debit: user={user_id}, amount={amount}, "
+            f"reason={reason.value}, job={related_job_id}"
+        )
+
+        return LedgerEntry(
+            id=entry_id,
+            user_id=user_id,
+            delta=-amount,
+            reason=reason.value,
+            related_job_id=related_job_id,
+            created_at=datetime.fromisoformat(now),
+        )
+
     def record_credit(
         self,
         user_id: str,

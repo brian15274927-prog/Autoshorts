@@ -11,7 +11,6 @@ Flow:
 """
 
 import os
-import sys
 import asyncio
 import logging
 import uuid
@@ -21,14 +20,7 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 from dataclasses import dataclass, field
 
-# Windows asyncio fix
-if sys.platform == 'win32':
-    try:
-        from asyncio import WindowsProactorEventLoopPolicy
-        asyncio.set_event_loop_policy(WindowsProactorEventLoopPolicy())
-    except (ImportError, AttributeError):
-        pass
-
+from app.config import config
 from .audio_analyzer import AudioAnalyzer, AudioAnalysis
 from .agents.story_analyzer import StoryAnalyzer, VisualBible
 from .agents.visual_director import VisualDirector, ART_STYLE_PROMPTS
@@ -37,25 +29,12 @@ from .video_assembler import assemble_slideshow, VideoSegment as AssemblerSegmen
 
 logger = logging.getLogger(__name__)
 
-# Output directories
-MUSICVIDEO_OUTPUT_DIR = Path(r"C:\dake\data\musicvideo")
+# Output directories - from config
+MUSICVIDEO_OUTPUT_DIR = config.paths.data_dir / "musicvideo"
 MUSICVIDEO_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-
-def get_ffmpeg_path() -> str:
-    """Get FFmpeg executable path."""
-    local_paths = [
-        r"C:\dake\tools\ffmpeg-master-latest-win64-gpl\bin\ffmpeg.exe",
-        r"C:\dake\tools\ffmpeg-8.0.1-essentials_build\bin\ffmpeg.exe",
-        r"C:\ffmpeg\bin\ffmpeg.exe",
-    ]
-    for path in local_paths:
-        if os.path.exists(path):
-            return path
-    return "ffmpeg"
-
-
-FFMPEG_PATH = get_ffmpeg_path()
+# FFmpeg path from config
+FFMPEG_PATH = config.paths.ffmpeg_path
 
 
 @dataclass
@@ -167,7 +146,7 @@ class MusicVideoService:
         lyrics: Optional[str] = None,
         art_style: str = "photorealism",
         language: str = "en",
-        image_provider: str = "dalle",
+        image_provider: str = "kie",
         progress_callback: Optional[callable] = None
     ) -> MusicVideoJob:
         """

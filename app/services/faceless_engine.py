@@ -1,32 +1,30 @@
 """
 Faceless Engine - Complete Auto-Pilot Video Generation.
-Orchestrates LLM, TTS, DALL-E 3, and Ken Burns animation for faceless content.
+Orchestrates LLM, TTS, Kie.ai (Nano Banana), and Ken Burns animation for faceless content.
 """
 import os
-import sys
 import asyncio
 import logging
 import uuid
 import json
+import shutil
 import subprocess
+import traceback
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Callable
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from enum import Enum
 
-# CRITICAL: Fix Windows asyncio for subprocess support
-if sys.platform == 'win32':
-    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+from app.config import config
 
 from .llm_service import LLMService, GeneratedScript, ScriptStyle
 from .tts_service import TTSService, TTSResult, VoicePreset
-from .dalle_service import DalleService, VisualPromptGenerator, GeneratedImage
+from .kie_service import KieService, GeneratedImage
 from .ken_burns_service import KenBurnsService, AnimatedClip, KenBurnsEffect
 
-# Multi-Agent Orchestration System
-from .agents import TechnicalDirector, MasterStoryteller, VisualDirector
-from .agents.storyteller import ScriptStyle as AgentScriptStyle
+# Fast Script Generator (single GPT request - 8x faster!)
+from .fast_script_generator import FastScriptGenerator, get_fast_script_generator
 
 # Import persistence layer for SQLite storage
 from app.persistence.faceless_jobs_repo import (
@@ -37,8 +35,8 @@ from app.persistence.faceless_jobs_repo import (
 
 logger = logging.getLogger(__name__)
 
-# Output directories
-DATA_DIR = Path(__file__).parent.parent.parent / "data"
+# Output directories - from config
+DATA_DIR = config.paths.data_dir
 FACELESS_DIR = DATA_DIR / "faceless"
 FACELESS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -46,66 +44,18 @@ FACELESS_DIR.mkdir(parents=True, exist_ok=True)
 # Without this, asyncio.create_task() tasks can be discarded
 BACKGROUND_TASKS = set()
 
+# FFmpeg paths from config
+FFMPEG_PATH = config.paths.ffmpeg_path
+FFPROBE_PATH = config.paths.ffprobe_path
 
-def get_ffmpeg_path() -> str:
-    """Get FFmpeg executable path - prioritize local installation."""
-    # Check for local FFmpeg installation first (Windows)
-    local_paths = [
-        r"C:\dake\tools\ffmpeg-master-latest-win64-gpl\bin\ffmpeg.exe",
-        r"C:\dake\tools\ffmpeg-8.0.1-essentials_build\bin\ffmpeg.exe",
-        r"C:\ffmpeg\bin\ffmpeg.exe",
-        r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
-    ]
+# Pipeline constants
+MIN_SEGMENT_DURATION = 3.0  # Minimum duration per segment in seconds
+FFMPEG_TIMEOUT = 300  # Timeout for FFmpeg operations in seconds
+FFMPEG_TIMEOUT_SHORT = 120  # Timeout for shorter FFmpeg operations
 
-    for path in local_paths:
-        if os.path.exists(path):
-            logger.info(f"Found local FFmpeg: {path}")
-            return path
-
-    # Try imageio-ffmpeg as fallback
-    try:
-        import imageio_ffmpeg
-        ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
-        if os.path.exists(ffmpeg_path):
-            logger.info(f"Using imageio-ffmpeg: {ffmpeg_path}")
-            return ffmpeg_path
-    except ImportError:
-        pass
-
-    # System PATH as last resort
-    logger.warning("Using system FFmpeg from PATH")
-    return "ffmpeg"
-
-
-def get_ffprobe_path() -> str:
-    """Get FFprobe executable path - prioritize local installation."""
-    # Check for local FFprobe installation first (Windows)
-    local_paths = [
-        r"C:\dake\tools\ffmpeg-master-latest-win64-gpl\bin\ffprobe.exe",
-        r"C:\dake\tools\ffmpeg-8.0.1-essentials_build\bin\ffprobe.exe",
-        r"C:\ffmpeg\bin\ffprobe.exe",
-        r"C:\Program Files\ffmpeg\bin\ffprobe.exe",
-    ]
-
-    for path in local_paths:
-        if os.path.exists(path):
-            return path
-
-    # Try imageio-ffmpeg as fallback
-    try:
-        import imageio_ffmpeg
-        ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
-        ffprobe_path = ffmpeg_path.replace("ffmpeg", "ffprobe")
-        if os.path.exists(ffprobe_path):
-            return ffprobe_path
-    except ImportError:
-        pass
-
-    return "ffprobe"
-
-
-FFMPEG_PATH = get_ffmpeg_path()
-FFPROBE_PATH = get_ffprobe_path()
+# Cost estimation constants
+KIE_COST_PER_IMAGE = 0.00  # Kie.ai Nano Banana (free tier or subscription)
+GPT_COST_PER_VIDEO = 0.04  # ~2 GPT-4o-mini calls
 
 # STARTUP DIAGNOSTIC - Log configuration status
 logger.info("=" * 60)
@@ -113,11 +63,8 @@ logger.info("FACELESS ENGINE CONFIGURATION")
 logger.info("=" * 60)
 logger.info(f"[OK] FFmpeg Path: {FFMPEG_PATH}")
 logger.info(f"[OK] FFprobe Path: {FFPROBE_PATH}")
-logger.info(f"[OK] FFmpeg Exists: {os.path.exists(FFMPEG_PATH)}")
+logger.info(f"[OK] Data Dir: {DATA_DIR}")
 logger.info("=" * 60)
-
-logger.info(f"Using FFmpeg: {FFMPEG_PATH}")
-logger.info(f"Using FFprobe: {FFPROBE_PATH}")
 
 
 class JobStatus(str, Enum):
@@ -125,7 +72,7 @@ class JobStatus(str, Enum):
     PENDING = "pending"
     GENERATING_SCRIPT = "generating_script"
     GENERATING_AUDIO = "generating_audio"
-    GENERATING_VISUALS = "generating_visuals"  # DALL-E image generation
+    GENERATING_VISUALS = "generating_visuals"  # Kie.ai image generation
     ANIMATING_VISUALS = "animating_visuals"    # Ken Burns animation
     RENDERING = "rendering"
     COMPLETED = "completed"
@@ -184,8 +131,11 @@ class FacelessJob:
     custom_idea: Optional[str] = None
     idea_mode: str = "expand"  # expand, polish, strict
 
-    # Image generation provider: "dalle" or "nanobanana"
-    image_provider: str = "dalle"
+    # Preset segments from edited script (skips GPT generation!)
+    preset_segments: Optional[List[Dict[str, Any]]] = None
+
+    # Image generation via Kie.ai (Nano Banana model)
+    image_provider: str = "kie"  # Only Kie is supported
 
 
 @dataclass
@@ -264,13 +214,13 @@ SUBTITLE_STYLES = {
 class FacelessEngine:
     """
     Main orchestrator for faceless video generation.
-    Combines LLM, TTS, DALL-E 3 AI Visuals, Ken Burns Animation, and FFmpeg rendering.
+    Combines LLM, TTS, Kie.ai (Nano Banana) AI Visuals, Ken Burns Animation, and FFmpeg rendering.
 
     Pipeline:
     1. Generate script with GPT-4o
     2. Generate audio narration with edge-tts
     3. Generate visual prompts with GPT-4o
-    4. Generate AI images with DALL-E 3
+    4. Generate AI images with Kie.ai (Nano Banana)
     5. Animate images with Ken Burns effects
     6. Render final video with subtitles
     """
@@ -282,20 +232,19 @@ class FacelessEngine:
         self,
         llm_service: Optional[LLMService] = None,
         tts_service: Optional[TTSService] = None,
-        dalle_service: Optional[DalleService] = None,
+        kie_service: Optional[KieService] = None,
         ken_burns_service: Optional[KenBurnsService] = None,
         progress_callback: Optional[Callable[[str, float, str], None]] = None
     ):
         self.llm = llm_service or LLMService()
         self.tts = tts_service or TTSService()
-        self.dalle = dalle_service or DalleService()
+        self.kie = kie_service or KieService()
         self.ken_burns = ken_burns_service or KenBurnsService()
-        self.prompt_generator = VisualPromptGenerator()
         self.progress_callback = progress_callback
 
-        # Initialize Multi-Agent Orchestration System
-        self.orchestrator = TechnicalDirector()
-        logger.info("[ENGINE] Multi-Agent Orchestration System initialized")
+        # Initialize Fast Script Generator (single GPT request - 8x faster!)
+        self.script_generator = get_fast_script_generator()
+        logger.info("[ENGINE] Fast Script Generator initialized (single-request mode)")
 
         # Initialize SQLite persistence
         self.db = get_faceless_jobs_repository()
@@ -315,7 +264,9 @@ class FacelessEngine:
         music_volume: float = 0.2,
         custom_idea: Optional[str] = None,
         idea_mode: str = "expand",
-        image_provider: str = "dalle"
+        image_provider: str = "kie",
+        user_id: str = "default",
+        preset_segments: Optional[List[Dict[str, Any]]] = None
     ) -> str:
         """
         Create a complete faceless video from a topic or custom idea.
@@ -328,7 +279,7 @@ class FacelessEngine:
             duration: Target duration in seconds
             format: Video format (9:16, 1:1, 16:9)
             subtitle_style: Subtitle style preset
-            art_style: Visual art style for DALL-E (photorealism, anime, etc.)
+            art_style: Visual art style (photorealism, anime, etc.)
             background_music: Include background music
             music_volume: Background music volume (0-1)
             custom_idea: User's own idea/draft to be processed by Storyteller
@@ -336,9 +287,9 @@ class FacelessEngine:
                 - 'expand': Develop into full structured script
                 - 'polish': Improve structure, keep content
                 - 'strict': Keep as close as possible to original
-            image_provider: Image generation provider:
-                - 'dalle': DALL-E 3 (~$0.04/image)
-                - 'nanobanana': Google Gemini (~$0.039/image)
+            image_provider: Always uses Kie.ai (Nano Banana model)
+            user_id: User identifier for job ownership (default: "default")
+            preset_segments: Pre-edited segments from UI (skips GPT script generation!)
 
         Returns:
             job_id for tracking progress
@@ -367,7 +318,8 @@ class FacelessEngine:
             music_volume=music_volume,
             custom_idea=custom_idea,
             idea_mode=idea_mode,
-            image_provider=image_provider
+            image_provider=image_provider,
+            preset_segments=preset_segments
         )
 
         # Store in memory
@@ -376,7 +328,7 @@ class FacelessEngine:
         # PERSIST TO DATABASE - Jobs survive server restarts
         self.db.create_job(
             job_id=job_id,
-            user_id="default",  # TODO: Get from request context
+            user_id=user_id,
             topic=topic,
             style=style.value,
             language=language,
@@ -405,7 +357,7 @@ class FacelessEngine:
         This saves money by not re-generating content that already exists:
         - If script exists, skip script generation
         - If audio exists, skip audio generation
-        - If images exist, skip DALL-E calls (most expensive!)
+        - If images exist, skip Kie.ai API calls
         - If clips exist, skip Ken Burns animation
 
         Returns:
@@ -460,7 +412,6 @@ class FacelessEngine:
                           PipelineCheckpoint.CLIPS_DONE.value]:
             # Restore script
             if job_record.script_json:
-                import json
                 job.script = json.loads(job_record.script_json)
                 logger.info(f"[RESUME] Restored script for job {job_id}")
 
@@ -476,17 +427,14 @@ class FacelessEngine:
                           PipelineCheckpoint.CLIPS_DONE.value]:
             # Restore images
             if job_record.image_paths_json:
-                import json
                 job.image_paths = json.loads(job_record.image_paths_json)
                 logger.info(f"[RESUME] Restored {len(job.image_paths)} images for job {job_id}")
             if job_record.visual_prompts_json:
-                import json
                 job.visual_prompts = json.loads(job_record.visual_prompts_json)
 
         if checkpoint == PipelineCheckpoint.CLIPS_DONE.value:
             # Restore clips
             if job_record.clip_paths_json:
-                import json
                 job.clip_paths = json.loads(job_record.clip_paths_json)
                 logger.info(f"[RESUME] Restored {len(job.clip_paths)} clips for job {job_id}")
 
@@ -513,8 +461,8 @@ class FacelessEngine:
         Pipeline stages:
         1. Generate Script (0-15%) - GPT-4o creates viral script
         2. Generate Audio (15-30%) - edge-tts creates narration
-        3. Generate Visual Prompts (30-35%) - GPT-4o creates DALL-E prompts
-        4. Generate AI Images (35-60%) - DALL-E 3 creates cinematic visuals
+        3. Generate Visual Prompts (30-35%) - GPT-4o creates image prompts
+        4. Generate AI Images (35-60%) - Kie.ai (Nano Banana) creates visuals
         5. Ken Burns Animation (60-80%) - Animate static images
         6. Final Render (80-100%) - Combine with audio and subtitles
 
@@ -525,10 +473,8 @@ class FacelessEngine:
         job_dir = FACELESS_DIR / job.job_id
         job_dir.mkdir(parents=True, exist_ok=True)
 
-        # Create temp directories - Use ABSOLUTE PATHS for Windows reliability
-        # Images go to centralized temp_images directory for easier debugging
-        temp_images_base = Path(r"C:\dake\data\temp_images")
-        temp_images_base.mkdir(parents=True, exist_ok=True)
+        # Create temp directories - use config paths
+        temp_images_base = config.paths.temp_images_dir
         images_dir = temp_images_base / job.job_id
         clips_dir = job_dir / "clips"
         images_dir.mkdir(exist_ok=True)
@@ -587,49 +533,61 @@ class FacelessEngine:
                 segment_objects = [SegmentCompat(s) for s in job.script["segments"]]
                 script = ScriptCompat(job.script, segment_objects)
             else:
-                await self._update_progress(job, JobStatus.GENERATING_SCRIPT, 2, "🎬 Запуск Multi-Agent системы...")
+                # Check if using PRESET segments (from edited script - NO GPT needed!)
+                if job.preset_segments:
+                    await self._update_progress(job, JobStatus.GENERATING_SCRIPT, 5, "📝 Использую ваш отредактированный сценарий...")
+                    logger.info(f"[PRESET_SEGMENTS] Using {len(job.preset_segments)} pre-edited segments (NO GPT!)")
 
-                # Map style string to AgentScriptStyle enum
-                try:
-                    agent_style = AgentScriptStyle(job.style.lower())
-                except ValueError:
-                    agent_style = AgentScriptStyle.DOCUMENTARY
-                    logger.warning(f"Unknown style '{job.style}', defaulting to DOCUMENTARY")
+                    # Calculate total duration from preset segments
+                    total_duration = sum(seg.get("duration", 5.0) for seg in job.preset_segments)
+                    total_words = sum(len(seg.get("text", "").split()) for seg in job.preset_segments)
+                    logger.info(f"[PRESET_SEGMENTS] Total duration: {total_duration:.1f}s, Total words: {total_words}")
 
-                # Check if using custom idea
-                if job.custom_idea:
-                    await self._update_progress(job, JobStatus.GENERATING_SCRIPT, 5, f"🤖 Agent 1: Обработка вашей идеи ({job.idea_mode})...")
-                    logger.info(f"[CUSTOM_IDEA] Processing user idea in '{job.idea_mode}' mode")
+                    # Create script directly from preset segments
+                    job.script = {
+                        "title": job.topic,
+                        "hook": job.preset_segments[0].get("text", "")[:50] if job.preset_segments else "",
+                        "cta": "",
+                        "total_duration": total_duration,
+                        "background_music_mood": "cinematic",
+                        "visual_keywords": [job.topic],
+                        "segments": job.preset_segments,
+                        "topic": job.topic,
+                        "style": job.style,
+                        "art_style": job.art_style
+                    }
+
+                    await self._update_progress(job, JobStatus.GENERATING_SCRIPT, 12, f"✅ Сценарий готов: {len(job.preset_segments)} сегментов")
+
                 else:
-                    await self._update_progress(job, JobStatus.GENERATING_SCRIPT, 5, f"🤖 Agent 1: Генерация {agent_style.value.upper()} истории...")
+                    await self._update_progress(job, JobStatus.GENERATING_SCRIPT, 2, "⚡ Быстрая генерация сценария...")
 
-                # Use Multi-Agent Orchestrator for script generation
-                orchestrated = await self.orchestrator.orchestrate_script_generation(
-                    topic=job.topic,
-                    style=agent_style,
-                    language=job.language,
-                    duration_seconds=job.duration,
-                    art_style=job.art_style,
-                    custom_idea=job.custom_idea,
-                    idea_mode=job.idea_mode
-                )
+                    # Check if using custom idea
+                    if job.custom_idea:
+                        await self._update_progress(job, JobStatus.GENERATING_SCRIPT, 5, f"📝 Обработка вашей идеи ({job.idea_mode})...")
+                        logger.info(f"[CUSTOM_IDEA] Processing user idea in '{job.idea_mode}' mode")
+                    else:
+                        await self._update_progress(job, JobStatus.GENERATING_SCRIPT, 5, f"📝 Генерация {job.style.upper()} сценария...")
 
-                await self._update_progress(job, JobStatus.GENERATING_SCRIPT, 12, "🎨 Agent 2: Сегментация и визуальные промпты...")
+                    # Use Fast Script Generator (single GPT request - 8x faster!)
+                    fast_script = await self.script_generator.generate_script(
+                        topic=job.topic,
+                        style=job.style,
+                        language=job.language,
+                        duration=job.duration,
+                        art_style=job.art_style,
+                        custom_idea=job.custom_idea,
+                        idea_mode=job.idea_mode
+                    )
 
-                # Convert orchestrated result to legacy format for backward compatibility
-                job.script = self.orchestrator.convert_to_legacy_format(orchestrated)
+                    await self._update_progress(job, JobStatus.GENERATING_SCRIPT, 12, "✅ Сценарий сгенерирован!")
 
+                    # Convert to legacy format
+                    job.script = fast_script.to_dict()
+
+                # Create segment and script objects (works for both preset and generated)
                 segment_objects = [SegmentCompat(s) for s in job.script["segments"]]
                 script = ScriptCompat(job.script, segment_objects)
-
-                # Track if fallback was used
-                if orchestrated.used_fallback_story or orchestrated.used_fallback_segments:
-                    job.used_fallback_script = True
-                    job.status_details += "Multi-Agent: "
-                    if orchestrated.used_fallback_story:
-                        job.status_details += "Fallback story used. "
-                    if orchestrated.used_fallback_segments:
-                        job.status_details += "Fallback segments used. "
 
                 # PERSIST script to database for editor access (also sets checkpoint)
                 self.db.update_job_script(
@@ -637,9 +595,11 @@ class FacelessEngine:
                     script=job.script,
                     used_fallback=job.used_fallback_script
                 )
-                logger.info(f"[MULTI-AGENT] Script persisted to database for job {job.job_id}")
-                logger.info(f"[MULTI-AGENT] Style: {agent_style.value}, Segments: {len(script.segments)}")
-                logger.info(f"[MULTI-AGENT] Visual consistency: {orchestrated.style_consistency_string[:50]}...")
+                if job.preset_segments:
+                    logger.info(f"[PRESET_SEGMENTS] Script persisted to database for job {job.job_id}")
+                else:
+                    logger.info(f"[FAST_SCRIPT] Script persisted to database for job {job.job_id}")
+                logger.info(f"[SCRIPT] Style: {job.style}, Segments: {len(script.segments)}")
 
                 await self._update_progress(job, JobStatus.GENERATING_SCRIPT, 15, f"✅ Сценарий готов: {script.title}")
 
@@ -694,15 +654,15 @@ class FacelessEngine:
                 return tts_result
 
             async def generate_images_task():
-                """Generate AI images using selected provider (DALL-E or Nano Banana)."""
+                """Generate AI images using Kie.ai (Nano Banana model)."""
                 if skip_images:
                     logger.info(f"[RESUME] Skipping images generation - already done")
                     return None
 
-                # Use factory function to get the appropriate image service
-                from app.services.nanobanana_service import get_image_service
-                image_service = get_image_service(job.image_provider)
-                logger.info(f"[IMAGE] Using provider: {job.image_provider}")
+                # Use Kie.ai service for image generation
+                from app.services.kie_service import KieService
+                image_service = KieService()
+                logger.info(f"[IMAGE] Using Kie.ai (Nano Banana model)")
 
                 generated_images = await image_service.generate_images_for_segments(
                     segments=job.script["segments"],
@@ -736,7 +696,7 @@ class FacelessEngine:
                 generated_images = None
 
             elif not skip_images:
-                await self._update_progress(job, JobStatus.GENERATING_VISUALS, 38, "🖼️ Генерация AI-изображений с DALL-E 3...")
+                await self._update_progress(job, JobStatus.GENERATING_VISUALS, 38, "🖼️ Генерация AI-изображений (Kie.ai)...")
                 tts_result = None
                 generated_images = await generate_images_task()
 
@@ -754,7 +714,18 @@ class FacelessEngine:
                     audio_path=job.audio_path,
                     audio_duration=job.audio_duration
                 )
-                logger.info(f"Audio persisted: {job.audio_duration:.1f}s")
+                logger.info(f"[AUDIO] Audio persisted: {job.audio_duration:.1f}s (words: {len(tts_result.words)})")
+
+                # Log segment durations that will be used for Ken Burns
+                segments = job.script.get("segments", [])
+                if segments:
+                    script_durations = [seg.get("duration", 5.0) for seg in segments]
+                    total_script_duration = sum(script_durations)
+                    scale_factor = job.audio_duration / total_script_duration if total_script_duration > 0 else 1.0
+                    scaled_durations = [d * scale_factor for d in script_durations]
+                    logger.info(f"[AUDIO] Script durations: {script_durations} = {total_script_duration:.1f}s")
+                    logger.info(f"[AUDIO] Scale factor: {scale_factor:.3f}")
+                    logger.info(f"[AUDIO] Scaled durations: [{', '.join(f'{d:.2f}' for d in scaled_durations)}] = {sum(scaled_durations):.1f}s")
             elif skip_audio:
                 await self._update_progress(job, JobStatus.GENERATING_AUDIO, 30, f"⏭️ Озвучка уже готова (resume): {job.audio_duration:.1f}с")
 
@@ -802,9 +773,21 @@ class FacelessEngine:
                 # SKIP - Clips already exist
                 logger.info(f"[RESUME] Skipping Ken Burns animation - already done")
                 await self._update_progress(job, JobStatus.ANIMATING_VISUALS, 80, f"⏭️ Анимация уже готова (resume): {len(job.clip_paths)} клипов")
-                animated_clips = []  # Will be loaded from clip_paths
-                for clip_path in job.clip_paths:
-                    animated_clips.append(AnimatedClip(clip_path=clip_path, duration=0, effect=KenBurnsEffect.ZOOM_IN))
+
+                # Recalculate durations for proper clip timing
+                segment_durations = self._calculate_segment_durations(
+                    job.script["segments"],
+                    job.audio_duration
+                )
+
+                animated_clips = []
+                for i, clip_path in enumerate(job.clip_paths):
+                    duration = segment_durations[i] if i < len(segment_durations) else MIN_SEGMENT_DURATION
+                    animated_clips.append(AnimatedClip(
+                        clip_path=clip_path,
+                        duration=duration,
+                        effect=KenBurnsEffect.ZOOM_IN
+                    ))
             else:
                 await self._update_progress(job, JobStatus.ANIMATING_VISUALS, 62, "🎬 Анимация изображений (Ken Burns эффект)...")
 
@@ -895,22 +878,27 @@ class FacelessEngine:
             # TOTAL COST ESTIMATION
             # ═══════════════════════════════════════════════════════════════
             num_images = len(job.image_paths) if job.image_paths else 0
-            # Count non-fallback images (actual API calls)
-            actual_dalle_calls = sum(1 for img in generated_images if "[fallback" not in img.prompt and "[reused]" not in img.prompt)
-            reused_count = sum(1 for img in generated_images if "[reused]" in img.prompt)
 
-            # Cost calculation (optimized settings)
-            dalle_cost = actual_dalle_calls * 0.04  # Standard 1024x1024
-            gpt_cost = 0.04  # ~2 GPT-4o calls (story + segments)
-            total_cost = dalle_cost + gpt_cost
+            # Count non-fallback images (actual API calls) - handle None case for resume
+            if generated_images:
+                actual_kie_calls = sum(1 for img in generated_images if "[fallback" not in img.prompt and "[reused]" not in img.prompt)
+                reused_count = sum(1 for img in generated_images if "[reused]" in img.prompt)
+            else:
+                # Resume mode - images already generated, estimate from count
+                actual_kie_calls = num_images  # Assume all were API calls
+                reused_count = 0
+
+            # Cost calculation (Kie.ai is free tier or subscription-based)
+            kie_cost = actual_kie_calls * KIE_COST_PER_IMAGE
+            gpt_cost = GPT_COST_PER_VIDEO
+            total_cost = kie_cost + gpt_cost
 
             logger.info("=" * 70)
             logger.info("ESTIMATED COST FOR THIS VIDEO")
             logger.info("=" * 70)
-            logger.info(f"  GPT-4o (script generation): $0.04")
-            logger.info(f"  DALL-E 3 ({actual_dalle_calls} images x $0.04): ${dalle_cost:.2f}")
-            logger.info(f"  Images reused (saved): {reused_count} (saved ${reused_count * 0.04:.2f})")
-            logger.info(f"  Fallback images (free): {num_images - actual_dalle_calls - reused_count}")
+            logger.info(f"  GPT-4o (script generation): ${gpt_cost:.2f}")
+            logger.info(f"  Kie.ai Nano Banana ({actual_kie_calls} images): ${kie_cost:.2f}")
+            logger.info(f"  Fallback images: {num_images - actual_kie_calls - reused_count}")
             logger.info("-" * 70)
             logger.info(f"  TOTAL ESTIMATED COST: ${total_cost:.2f}")
             logger.info("=" * 70)
@@ -922,7 +910,6 @@ class FacelessEngine:
 
         except Exception as e:
             logger.error(f"Faceless pipeline failed for {job.job_id}: {e}")
-            import traceback
             traceback.print_exc()
             job.status = JobStatus.FAILED
             job.error = str(e)
@@ -956,8 +943,7 @@ class FacelessEngine:
             durations = [total_audio_duration / len(segments)] * len(segments)
 
         # Ensure minimum duration per segment
-        min_duration = 3.0
-        durations = [max(d, min_duration) for d in durations]
+        durations = [max(d, MIN_SEGMENT_DURATION) for d in durations]
 
         return durations
 
@@ -1005,20 +991,18 @@ class FacelessEngine:
             "-crf", "18",
             "-c:a", "aac",
             "-b:a", "192k",
-            "-t", str(job.audio_duration),
-            "-shortest",
+            # Don't limit to audio duration - video can be longer than narration
             output_path
         ]
 
         logger.info("Rendering final video with audio and subtitles...")
 
         # Use synchronous subprocess.run to avoid Windows asyncio issues
-        import subprocess
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
-            timeout=300
+            timeout=FFMPEG_TIMEOUT
         )
 
         if result.returncode != 0:
@@ -1044,17 +1028,15 @@ class FacelessEngine:
             "-c:v", "libx264",
             "-preset", "fast",
             "-c:a", "aac",
-            "-t", str(job.audio_duration),
-            "-shortest",
+            # Don't limit to audio duration - video can be longer than narration
             output_path
         ]
 
-        import subprocess
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
-            timeout=300
+            timeout=FFMPEG_TIMEOUT
         )
 
         if result.returncode != 0:
@@ -1082,12 +1064,11 @@ class FacelessEngine:
             output_path
         ]
 
-        import subprocess
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
-            timeout=120
+            timeout=FFMPEG_TIMEOUT_SHORT
         )
 
         if result.returncode != 0:
@@ -1095,160 +1076,6 @@ class FacelessEngine:
             raise Exception("Failed to create fallback video")
 
         logger.info(f"Fallback video created: {output_path}")
-
-    # Legacy method kept for compatibility - no longer used in main pipeline
-    async def _render_video_legacy(self, job: FacelessJob, output_path: str):
-        """Render the final video using FFmpeg."""
-        job_dir = Path(output_path).parent
-        concat_footage_path = job_dir / "concat_footage.mp4"
-
-        # Get subtitle style
-        style = SUBTITLE_STYLES.get(job.subtitle_style, SUBTITLE_STYLES["hormozi"])
-
-        # Generate ASS subtitles from words
-        words_path = job_dir / "words.json"
-        ass_path = job_dir / "subtitles.ass"
-
-        if words_path.exists():
-            await self._generate_ass_subtitles(words_path, ass_path, style, job.width, job.height)
-
-        # First, prepare video source
-        if job.footage_paths:
-            # Concatenate and scale footage clips
-            footage_list_path = job_dir / "footage_list.txt"
-            with open(footage_list_path, 'w', encoding='utf-8') as f:
-                for path in job.footage_paths:
-                    # Use forward slashes for FFmpeg compatibility
-                    clean_path = path.replace('\\', '/')
-                    f.write(f"file '{clean_path}'\n")
-
-            # Concatenate footage with scaling to target resolution
-            cmd = [
-                FFMPEG_PATH, "-y",
-                "-f", "concat",
-                "-safe", "0",
-                "-i", str(footage_list_path),
-                "-vf", f"scale={job.width}:{job.height}:force_original_aspect_ratio=decrease,pad={job.width}:{job.height}:(ow-iw)/2:(oh-ih)/2,setsar=1",
-                "-c:v", "libx264",
-                "-preset", "fast",
-                "-crf", "23",
-                "-an",  # No audio from footage
-                str(concat_footage_path)
-            ]
-
-            logger.info(f"Concatenating {len(job.footage_paths)} footage clips...")
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-
-            if result.returncode != 0 or not concat_footage_path.exists():
-                logger.warning(f"Footage concat failed: {result.stderr}, using fallback")
-                job.footage_paths = []  # Fall through to create black video
-
-        # If no footage or concat failed, create a black video
-        if not job.footage_paths or not concat_footage_path.exists():
-            logger.info(f"Creating black video background for {job.audio_duration}s")
-            cmd = [
-                FFMPEG_PATH, "-y",
-                "-f", "lavfi",
-                "-i", f"color=c=black:s={job.width}x{job.height}:r=30:d={job.audio_duration + 1}",
-                "-c:v", "libx264",
-                "-preset", "ultrafast",
-                "-t", str(job.audio_duration + 1),
-                str(concat_footage_path)
-            ]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-
-            if result.returncode != 0:
-                logger.error(f"Failed to create black video: {result.stderr}")
-                raise Exception("Failed to create background video")
-
-        # Now render final video with audio and subtitles
-        # Use stream_loop to loop the video if needed
-        filter_complex = []
-
-        # Loop video to match audio duration
-        filter_complex.append(f"[0:v]loop=-1:size=32767,setpts=N/FRAME_RATE/TB[v1]")
-
-        # Add subtitles
-        if ass_path.exists():
-            # Escape path for FFmpeg filter
-            ass_path_escaped = str(ass_path).replace('\\', '/').replace(':', '\\:')
-            filter_complex.append(f"[v1]ass='{ass_path_escaped}'[vout]")
-        else:
-            filter_complex.append("[v1]copy[vout]")
-
-        filter_str = ";".join(filter_complex)
-
-        cmd = [
-            FFMPEG_PATH, "-y",
-            "-i", str(concat_footage_path),
-            "-i", job.audio_path,
-            "-filter_complex", filter_str,
-            "-map", "[vout]",
-            "-map", "1:a",
-            "-c:v", "libx264",
-            "-preset", "fast",
-            "-crf", "18",
-            "-c:a", "aac",
-            "-b:a", "192k",
-            "-t", str(job.audio_duration),
-            "-shortest",
-            output_path
-        ]
-
-        logger.info("Rendering final video with subtitles...")
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-
-        if result.returncode != 0:
-            logger.error(f"FFmpeg render failed: {result.stderr}")
-            # Try simpler render as fallback
-            await self._simple_render(job, output_path)
-
-    async def _simple_render(self, job: FacelessJob, output_path: str):
-        """Simple fallback render without complex filters. Uses synchronous subprocess."""
-        job_dir = Path(output_path).parent
-        concat_footage_path = job_dir / "concat_footage.mp4"
-
-        # Use existing concat footage if available, otherwise create black video
-        if concat_footage_path.exists():
-            input_video = str(concat_footage_path)
-        elif job.footage_paths:
-            input_video = job.footage_paths[0]
-        else:
-            # Create black video
-            black_video = job_dir / "black.mp4"
-            cmd = [
-                FFMPEG_PATH, "-y",
-                "-f", "lavfi",
-                "-i", f"color=c=black:s={job.width}x{job.height}:r=30:d={job.audio_duration + 1}",
-                "-c:v", "libx264",
-                "-preset", "ultrafast",
-                "-t", str(job.audio_duration + 1),
-                str(black_video)
-            ]
-            subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-            input_video = str(black_video)
-
-        # Simple combine with loop to match audio duration
-        logger.info(f"Simple render: combining {input_video} with {job.audio_path}")
-        cmd = [
-            FFMPEG_PATH, "-y",
-            "-stream_loop", "-1",  # Loop video
-            "-i", input_video,
-            "-i", job.audio_path,
-            "-map", "0:v",
-            "-map", "1:a",
-            "-c:v", "libx264",
-            "-preset", "fast",
-            "-c:a", "aac",
-            "-t", str(job.audio_duration),
-            "-shortest",
-            output_path
-        ]
-
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-
-        if result.returncode != 0:
-            logger.error(f"Simple render also failed: {result.stderr}")
 
     async def _generate_ass_subtitles(
         self,
@@ -1385,29 +1212,27 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
     def _db_record_to_job(self, record: FacelessJobRecord) -> FacelessJob:
         """Convert database record to FacelessJob object."""
-        import json
-
         # Parse JSON fields
         script = None
         if record.script_json:
             try:
                 script = json.loads(record.script_json)
-            except:
-                pass
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.warning(f"Failed to parse script JSON for job {record.job_id}: {e}")
 
         image_paths = []
         if record.image_paths_json:
             try:
                 image_paths = json.loads(record.image_paths_json)
-            except:
-                pass
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.warning(f"Failed to parse image_paths JSON for job {record.job_id}: {e}")
 
         clip_paths = []
         if record.clip_paths_json:
             try:
                 clip_paths = json.loads(record.clip_paths_json)
-            except:
-                pass
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.warning(f"Failed to parse clip_paths JSON for job {record.job_id}: {e}")
 
         return FacelessJob(
             job_id=record.job_id,
@@ -1447,7 +1272,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         # Build image URLs for UI display
         image_urls = []
         images_dir = FACELESS_DIR / job_id / "images"
-        temp_images_dir = Path(r"C:\dake\data\temp_images") / job_id
+        temp_images_dir = config.paths.temp_images_dir / job_id
 
         # Check both possible image locations
         for check_dir in [images_dir, temp_images_dir]:
@@ -1500,8 +1325,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     async def close(self):
         """Close all services."""
         await self.llm.close()
-        await self.dalle.close()
-        await self.prompt_generator.close()
+        await self.kie.close()
 
     async def cleanup_job(self, job_id: str, keep_final: bool = True):
         """
@@ -1526,7 +1350,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         ]
 
         # Delete temp folders (clips, footage) - keep images for preview
-        import shutil
         for folder_name in ["clips", "footage"]:
             folder_dir = job_dir / folder_name
             if folder_dir.exists():
@@ -1542,7 +1365,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
         if not keep_final:
             # Delete entire job directory
-            import shutil
             shutil.rmtree(job_dir, ignore_errors=True)
 
         logger.info(f"Cleaned up job {job_id}")

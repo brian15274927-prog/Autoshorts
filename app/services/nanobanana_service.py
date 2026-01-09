@@ -8,17 +8,7 @@ Models:
 
 Pricing: ~$0.039 per image (1290 output tokens * $30/1M)
 """
-import sys
 import asyncio
-
-# CRITICAL: Windows asyncio fix
-if sys.platform == 'win32':
-    try:
-        from asyncio import WindowsProactorEventLoopPolicy
-        asyncio.set_event_loop_policy(WindowsProactorEventLoopPolicy())
-    except (ImportError, AttributeError):
-        pass
-
 import os
 import logging
 import httpx
@@ -28,11 +18,12 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
 
+from app.config import config
+
 logger = logging.getLogger(__name__)
 
-# Output directory for generated images
-NANOBANANA_OUTPUT_DIR = Path(r"C:\dake\data\temp_images")
-NANOBANANA_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+# Output directory for generated images - from config
+NANOBANANA_OUTPUT_DIR = config.paths.temp_images_dir
 
 
 class NanoBananaError(Exception):
@@ -368,18 +359,12 @@ class NanoBananaService:
 # Factory function for creating image generation service
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def get_image_service(provider: str = "dalle"):
+def get_image_service(provider: str = "kie"):
     """
-    Factory function to get the appropriate image generation service.
+    Factory function to get the image generation service.
 
-    Args:
-        provider: "dalle" or "nanobanana"
-
-    Returns:
-        DalleService or NanoBananaService instance
+    Always returns KieService (Kie.ai API with Nano Banana model).
+    The provider parameter is kept for backward compatibility but ignored.
     """
-    if provider == "nanobanana":
-        return NanoBananaService()
-    else:
-        from .dalle_service import DalleService
-        return DalleService()
+    from .kie_service import KieService
+    return KieService()

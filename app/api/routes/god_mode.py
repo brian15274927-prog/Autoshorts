@@ -1,24 +1,32 @@
 """
 God Mode Admin API - Полный контроль над системой.
-Protected by X-Admin-Secret header.
+Protected by X-Admin-Secret header with rate limiting and audit logging.
 """
 import os
 import uuid
 import json
 import logging
+import time
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 from pathlib import Path
+from collections import defaultdict
 
-from fastapi import APIRouter, HTTPException, status, Header, Depends, Query
+from fastapi import APIRouter, HTTPException, status, Header, Depends, Query, Request
 from pydantic import BaseModel, Field
 
 from app.auth.repository import get_user_repository
 from app.auth.models import User, Plan
 from app.persistence.database import get_connection
+from app.config import config
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/god", tags=["God Mode"])
+
+# Rate limiting state
+_rate_limit_state: Dict[str, list] = defaultdict(list)
+RATE_LIMIT_WINDOW = 60  # seconds
+RATE_LIMIT_MAX_REQUESTS = 30  # max requests per window
 
 # Global state
 _system_state = {
@@ -42,15 +50,61 @@ _config = {
 }
 
 
-def _get_admin_secret() -> str:
-    return os.environ.get("ADMIN_SECRET", "admin-secret-key-change-in-production")
+def _check_rate_limit(client_ip: str) -> bool:
+    """Check if client has exceeded rate limit."""
+    now = time.time()
+    # Clean old entries
+    _rate_limit_state[client_ip] = [
+        t for t in _rate_limit_state[client_ip]
+        if now - t < RATE_LIMIT_WINDOW
+    ]
+    # Check limit
+    if len(_rate_limit_state[client_ip]) >= RATE_LIMIT_MAX_REQUESTS:
+        return False
+    _rate_limit_state[client_ip].append(now)
+    return True
+
+
+def _audit_log(action: str, user_ip: str, details: Optional[Dict] = None):
+    """Log admin action for audit trail."""
+    log_entry = {
+        "timestamp": datetime.now().isoformat(),
+        "action": action,
+        "ip": user_ip,
+        "details": details or {}
+    }
+    logger.warning(f"[AUDIT] GOD_MODE: {json.dumps(log_entry)}")
 
 
 async def verify_god_mode(
+    request: Request,
     x_admin_secret: Optional[str] = Header(None, alias="X-Admin-Secret"),
 ) -> bool:
-    if not x_admin_secret or x_admin_secret != _get_admin_secret():
+    """Verify admin access with rate limiting and audit logging."""
+    client_ip = request.client.host if request.client else "unknown"
+
+    # Check if admin secret is configured
+    if not config.admin_secret:
+        _audit_log("ACCESS_DENIED", client_ip, {"reason": "admin_secret_not_configured"})
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "God Mode not available - ADMIN_SECRET not configured"}
+        )
+
+    # Rate limit check
+    if not _check_rate_limit(client_ip):
+        _audit_log("RATE_LIMITED", client_ip)
+        raise HTTPException(
+            status_code=429,
+            detail={"error": "Rate limit exceeded. Try again later."}
+        )
+
+    # Verify secret
+    if not x_admin_secret or x_admin_secret != config.admin_secret:
+        _audit_log("ACCESS_DENIED", client_ip, {"reason": "invalid_secret"})
         raise HTTPException(status_code=403, detail={"error": "God Mode access denied"})
+
+    _audit_log("ACCESS_GRANTED", client_ip)
     return True
 
 
@@ -126,13 +180,21 @@ async def get_system_health():
     """Получить полный статус системы."""
     conn = get_connection()
 
-    # Queue stats
+    # Queue stats - single query with GROUP BY instead of N+1
     try:
-        pending = conn.execute("SELECT COUNT(*) FROM job_ownership WHERE status = 'pending'").fetchone()[0]
-        processing = conn.execute("SELECT COUNT(*) FROM job_ownership WHERE status = 'processing'").fetchone()[0]
-        completed = conn.execute("SELECT COUNT(*) FROM job_ownership WHERE status = 'completed'").fetchone()[0]
-        failed = conn.execute("SELECT COUNT(*) FROM job_ownership WHERE status = 'failed'").fetchone()[0]
-    except:
+        cursor = conn.execute("""
+            SELECT status, COUNT(*) as count
+            FROM job_ownership
+            WHERE status IN ('pending', 'processing', 'completed', 'failed')
+            GROUP BY status
+        """)
+        stats = {row[0]: row[1] for row in cursor.fetchall()}
+        pending = stats.get('pending', 0)
+        processing = stats.get('processing', 0)
+        completed = stats.get('completed', 0)
+        failed = stats.get('failed', 0)
+    except Exception as e:
+        logger.warning(f"Failed to get queue stats: {e}")
         pending = processing = completed = failed = 0
 
     return SystemHealthResponse(

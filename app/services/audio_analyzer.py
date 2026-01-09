@@ -15,24 +15,12 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
 
+from app.config import config
+
 logger = logging.getLogger(__name__)
 
-
-def get_ffprobe_path() -> str:
-    """Get FFprobe executable path."""
-    local_paths = [
-        r"C:\dake\tools\ffmpeg-master-latest-win64-gpl\bin\ffprobe.exe",
-        r"C:\dake\tools\ffmpeg-8.0.1-essentials_build\bin\ffprobe.exe",
-        r"C:\ffmpeg\bin\ffprobe.exe",
-        r"C:\Program Files\ffmpeg\bin\ffprobe.exe",
-    ]
-    for path in local_paths:
-        if os.path.exists(path):
-            return path
-    return "ffprobe"
-
-
-FFPROBE_PATH = get_ffprobe_path()
+# FFprobe path from config
+FFPROBE_PATH = config.paths.ffprobe_path
 
 
 @dataclass

@@ -14,37 +14,22 @@ from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, asdict
 
 from app.director import DirectorEngine, ClipDecision, DirectorResult
+from app.config import config
 
 logger = logging.getLogger(__name__)
 
 # ============================================================
-# ABSOLUTE PATHS FOR WINDOWS COMPATIBILITY
+# PATHS FROM CONFIG (auto-detected)
 # ============================================================
 
 # Base directories
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-DATA_DIR = BASE_DIR / "data"
+DATA_DIR = config.paths.data_dir
 SHORTS_DIR = DATA_DIR / "shorts"
 
-# FFmpeg paths - ABSOLUTE
-FFMPEG_PATH = r"C:\dake\tools\ffmpeg-master-latest-win64-gpl\bin\ffmpeg.exe"
-FFPROBE_PATH = r"C:\dake\tools\ffmpeg-master-latest-win64-gpl\bin\ffprobe.exe"
-
-# Fallback paths
-if not os.path.exists(FFMPEG_PATH):
-    fallback_paths = [
-        r"C:\Users\user\AppData\Local\Programs\Python\Python313\Lib\site-packages\imageio_ffmpeg\binaries\ffmpeg.exe",
-        r"C:\ffmpeg\bin\ffmpeg.exe",
-        r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
-    ]
-    for path in fallback_paths:
-        if os.path.exists(path):
-            FFMPEG_PATH = path
-            FFPROBE_PATH = path.replace("ffmpeg.exe", "ffprobe.exe")
-            break
-    else:
-        FFMPEG_PATH = "ffmpeg"
-        FFPROBE_PATH = "ffprobe"
+# FFmpeg paths from config (auto-detected)
+FFMPEG_PATH = config.paths.ffmpeg_path
+FFPROBE_PATH = config.paths.ffprobe_path
 
 # FFmpeg directory for yt-dlp
 FFMPEG_DIR = os.path.dirname(FFMPEG_PATH) if os.path.exists(FFMPEG_PATH) else None

@@ -69,9 +69,12 @@ class ParallelGenerator:
         if image_provider == "dalle":
             from app.services.dalle_service import get_dalle_service
             service = get_dalle_service()
+        elif image_provider == "kie":
+            from app.services.kie_service import KieService
+            service = KieService()
         else:
-            from app.services.nanobanana_service import get_nanobanana_service
-            service = get_nanobanana_service()
+            from app.services.nanobanana_service import NanoBananaService
+            service = NanoBananaService()
         
         # Create tasks
         tasks = []
@@ -214,7 +217,7 @@ class ParallelGenerator:
         self,
         image_prompts: List[str],
         tts_texts: List[str],
-        image_provider: str = "dalle",
+        image_provider: str = "kie",
         voice: str = "ru-RU-DmitryNeural",
         language: str = "ru",
         size: str = "1024x1792",
@@ -286,7 +289,7 @@ parallel_gen = get_parallel_generator()
 result = await parallel_gen.generate_batch(
     image_prompts=[seg.visual_prompt for seg in segments],
     tts_texts=[seg.text for seg in segments],
-    image_provider="dalle",
+    image_provider="kie",
     voice="ru-RU-DmitryNeural"
 )
 

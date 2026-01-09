@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from app.config import config
 from app.services.faceless_engine import (
     get_faceless_engine,
     FacelessJob,
@@ -55,10 +56,10 @@ class GenerateFacelessRequest(BaseModel):
         description="How to process custom_idea: 'expand' (develop into full script), 'polish' (improve structure only), 'strict' (keep as close as possible)"
     )
 
-    # Image generation provider
+    # Image generation via Kie.ai (Nano Banana model)
     image_provider: str = Field(
-        "dalle",
-        description="Image generation provider: 'dalle' (DALL-E 3, ~$0.04/img) or 'nanobanana' (Google Gemini, ~$0.039/img)"
+        "kie",
+        description="Image generation via Kie.ai (Nano Banana model). Always uses 'kie'."
     )
 
 
@@ -97,9 +98,11 @@ class ScriptPreviewRequest(BaseModel):
 
 
 class EditedSegment(BaseModel):
-    """Edited segment from user."""
+    """Edited segment from user - includes ALL data to preserve structure."""
     index: int = Field(..., description="Segment index")
-    text: str = Field(..., description="Edited text")
+    text: str = Field(..., description="Edited narration text")
+    visual_prompt: str = Field("", description="Visual prompt for image generation")
+    duration: float = Field(5.0, description="Segment duration in seconds")
 
 
 class GenerateFromScriptRequest(BaseModel):
@@ -115,7 +118,7 @@ class GenerateFromScriptRequest(BaseModel):
     art_style: str = Field("photorealism")
     background_music: bool = Field(True)
     music_volume: float = Field(0.2)
-    image_provider: str = Field("dalle")
+    image_provider: str = Field("kie")
     
     # Edited segments from user
     edited_segments: List[EditedSegment] = Field(..., description="User-edited segments")
@@ -622,6 +625,13 @@ async def update_segment(job_id: str, segment_index: int, text: str = None, dura
     Update a specific segment (for editor changes).
     Allows modifying text and duration of individual segments.
     """
+    # Validate that at least one field is provided
+    if text is None and duration is None:
+        raise HTTPException(
+            status_code=400,
+            detail="At least one field (text or duration) must be provided"
+        )
+
     from app.persistence.faceless_jobs_repo import get_faceless_jobs_repository
 
     repo = get_faceless_jobs_repository()
@@ -749,7 +759,7 @@ async def regenerate_segment_image(
             repo.update_segment(job_id, segment_index, image_path=result.image_path, visual_prompt=prompt)
 
             # Also copy to temp_images for editor access
-            temp_dir = Path("C:/dake/data/temp_images") / job_id
+            temp_dir = config.paths.temp_images_dir / job_id
             temp_dir.mkdir(parents=True, exist_ok=True)
             import shutil
             temp_path = temp_dir / f"segment_{segment_index:03d}.png"
@@ -1005,29 +1015,22 @@ async def preview_script(request: ScriptPreviewRequest):
 
     Returns the complete script with visual prompts for preview.
     """
-    from app.services.agents import TechnicalDirector
-    from app.services.agents.storyteller import ScriptStyle as AgentScriptStyle
+    from app.services.fast_script_generator import get_fast_script_generator
 
-    orchestrator = TechnicalDirector()
+    # Use Fast Script Generator (single GPT request - 8x faster!)
+    generator = get_fast_script_generator()
 
-    try:
-        style = AgentScriptStyle(request.style.lower())
-    except ValueError:
-        style = AgentScriptStyle.DOCUMENTARY
-
-    # Generate script using Multi-Agent system
-    orchestrated = await orchestrator.orchestrate_script_generation(
+    fast_script = await generator.generate_script(
         topic=request.topic,
-        style=style,
+        style=request.style,
         language=request.language,
-        duration_seconds=request.duration,
+        duration=request.duration,
         art_style=request.art_style,
-        custom_idea=request.custom_idea,  # Support custom user text!
+        custom_idea=request.custom_idea,
         idea_mode=request.idea_mode
     )
 
-    # Convert to legacy format for response
-    script_data = orchestrator.convert_to_legacy_format(orchestrated)
+    script_data = fast_script.to_dict()
 
     # Calculate estimated costs
     num_segments = len(script_data["segments"])
@@ -1038,7 +1041,7 @@ async def preview_script(request: ScriptPreviewRequest):
         "script": {
             "title": script_data["title"],
             "hook": script_data["hook"],
-            "narrative": script_data.get("narrative", ""),
+            "narrative": "",  # Fast generator doesn't produce full narrative
             "segments": [
                 {
                     "text": s["text"],
@@ -1055,13 +1058,14 @@ async def preview_script(request: ScriptPreviewRequest):
             "visual_keywords": script_data["visual_keywords"],
             "background_music_mood": script_data["background_music_mood"],
             "art_style": request.art_style,
-            "style_consistency": script_data.get("style_consistency_string", "")
+            "style_consistency": ""
         },
         "generation_info": {
-            "used_fallback_story": orchestrated.used_fallback_story,
-            "used_fallback_segments": orchestrated.used_fallback_segments,
+            "used_fallback_story": False,
+            "used_fallback_segments": False,
             "model_used": "gpt-4o-mini",
-            "art_style_applied": request.art_style
+            "art_style_applied": request.art_style,
+            "generation_mode": "fast (single request)"
         },
         "estimated_cost": {
             "script_cost": "$0.01",
@@ -1264,36 +1268,50 @@ async def generate_from_script(request: GenerateFromScriptRequest, x_user_id: st
     if not check["allowed"]:
         raise HTTPException(status_code=429, detail={"error": "Rate limit exceeded"})
     
+    # Calculate actual duration from segments
+    actual_duration = sum(s.duration for s in request.edited_segments)
+
     logger.info("=" * 60)
     logger.info(f"🎬 VIDEO FROM EDITED SCRIPT")
     logger.info(f"   Topic: {request.topic}")
     logger.info(f"   Segments: {len(request.edited_segments)}")
+    logger.info(f"   Total duration from segments: {actual_duration:.1f}s")
     logger.info("=" * 60)
-    
-    # Build custom_idea from edited segments
-    edited_text = "\n\n".join([f"Segment {s.index + 1}:\n{s.text}" for s in request.edited_segments])
-    
+
+    # Convert edited segments to engine format (preserves visual_prompts and durations!)
+    preset_segments = [
+        {
+            "text": s.text,
+            "visual_prompt": s.visual_prompt,
+            "duration": s.duration,
+            "emotion": "neutral",
+            "segment_type": "content" if s.index > 0 else "hook",
+            "camera_direction": "zoom_in" if s.index % 2 == 0 else "zoom_out",
+            "lighting_mood": "cinematic"
+        }
+        for s in request.edited_segments
+    ]
+
     engine = get_faceless_engine()
-    
+
     try:
         style = ScriptStyle(request.style) if request.style in [s.value for s in ScriptStyle] else ScriptStyle.VIRAL
     except ValueError:
         style = ScriptStyle.VIRAL
-    
-    # Generate video with edited script
+
+    # Generate video with PRESET segments (skips GPT script generation!)
     job_id = await engine.create_faceless_video(
         topic=request.topic,
         style=style,
         language=request.language,
         voice=request.voice,
-        duration=request.duration,
+        duration=int(actual_duration),  # Use actual duration from segments
         format=request.format,
         subtitle_style=request.subtitle_style,
         art_style=request.art_style,
         background_music=request.background_music,
         music_volume=request.music_volume,
-        custom_idea=edited_text,  # User's edited script
-        idea_mode="strict",  # Keep user's text as-is!
+        preset_segments=preset_segments,  # Pass segments directly - NO GPT!
         image_provider=request.image_provider
     )
     

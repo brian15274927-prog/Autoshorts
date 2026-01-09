@@ -24,6 +24,7 @@ from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from app.auth import AuthMiddleware
+from app.config import config
 
 from .routes import health_router, render_router, admin_router, clips_router, youtube_router, video_router, broll_router, god_mode_router, faceless_router
 # REMOVED: portraits_router, musicvideo_router (будут добавлены позже)
@@ -119,35 +120,25 @@ def create_app(
     app.include_router(orchestration_router)
     app.include_router(youtube_shorts_router)  # YouTube Shorts module
 
-    # Mount static files for generated content (images, videos)
-    data_dir = Path(__file__).parent.parent.parent / "data"
+    # Mount static files for generated content (images, videos) - use config paths
+    data_dir = config.paths.data_dir
     data_dir.mkdir(parents=True, exist_ok=True)
     app.mount("/data", StaticFiles(directory=str(data_dir)), name="data")
 
     # Mount explicit outputs directory for permanent video URLs
-    outputs_dir = Path(r"C:\dake\data\outputs")
+    outputs_dir = data_dir / "outputs"
     outputs_dir.mkdir(parents=True, exist_ok=True)
     app.mount("/outputs", StaticFiles(directory=str(outputs_dir)), name="outputs")
 
     # CRITICAL: Mount temp_images directory for AI-generated images
     # This allows the editor to access images via /temp_images/{job_id}/{filename}
-    temp_images_dir = Path(r"C:\dake\data\temp_images")
-    temp_images_dir.mkdir(parents=True, exist_ok=True)
+    temp_images_dir = config.paths.temp_images_dir
     app.mount("/temp_images", StaticFiles(directory=str(temp_images_dir)), name="temp_images")
 
     # Mount shorts directory for YouTube clips
-    shorts_dir = Path(r"C:\dake\data\shorts")
+    shorts_dir = data_dir / "shorts"
     shorts_dir.mkdir(parents=True, exist_ok=True)
     app.mount("/shorts", StaticFiles(directory=str(shorts_dir)), name="shorts")
-
-    # REMOVED: Templates and MusicVideo directories (будут добавлены позже)
-    # templates_dir = Path(r"C:\dake\data\templates")
-    # templates_dir.mkdir(parents=True, exist_ok=True)
-    # app.mount("/templates", StaticFiles(directory=str(templates_dir)), name="templates")
-    #
-    # musicvideo_dir = Path(r"C:\dake\data\musicvideo")
-    # musicvideo_dir.mkdir(parents=True, exist_ok=True)
-    # app.mount("/musicvideo_files", StaticFiles(directory=str(musicvideo_dir)), name="musicvideo_files")
 
     logger.info(f"Static files mounted:")
     logger.info(f"  /data -> {data_dir}")

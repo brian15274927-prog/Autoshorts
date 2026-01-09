@@ -206,8 +206,8 @@ class EmotionScanner:
         finally:
             try:
                 os.unlink(tmp_path)
-            except:
-                pass
+            except OSError:
+                pass  # Ignore cleanup errors
 
     def scan_segments(
         self,

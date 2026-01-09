@@ -22,14 +22,20 @@ from datetime import datetime
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 from fastapi.responses import JSONResponse
 
+from app.config import config
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/portraits", tags=["AI Portraits"])
 
-# Paths
-TEMPLATES_DIR = Path(r"C:\dake\data\templates")
-PORTRAITS_OUTPUT_DIR = Path(r"C:\dake\data\portraits_output")
+# Paths from config
+TEMPLATES_DIR = config.paths.data_dir / "templates"
+PORTRAITS_OUTPUT_DIR = config.paths.data_dir / "portraits_output"
 PORTRAITS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+# File upload limits
+MAX_IMAGE_SIZE_MB = 10  # Maximum upload size in MB
+MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024
 
 
 def load_templates():
@@ -92,9 +98,18 @@ async def generate_portrait(
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
 
-    # Validate image
-    if not image.content_type.startswith("image/"):
+    # Validate image type
+    if not image.content_type or not image.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image")
+
+    # Validate image size
+    content = await image.read()
+    await image.seek(0)  # Reset for potential future reads
+    if len(content) > MAX_IMAGE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Image too large. Maximum size is {MAX_IMAGE_SIZE_MB}MB"
+        )
 
     # Save uploaded image
     generation_id = str(uuid.uuid4())

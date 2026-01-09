@@ -443,11 +443,6 @@ class TechnicalDirector:
         await self.visual_director.close()
         logger.info("[ORCHESTRATOR] All agents closed")
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# BILLING ERROR HANDLER
-# ═══════════════════════════════════════════════════════════════════════════════
-
     def _deduplicate_segments(self, segments: List[VisualSegment]) -> List[VisualSegment]:
         """
         Deduplicate segments with similar meaning.

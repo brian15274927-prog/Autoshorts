@@ -112,7 +112,8 @@ class SemanticChecker:
         try:
             subprocess.run(cmd, capture_output=True, timeout=30)
             return Path(output).exists()
-        except:
+        except (subprocess.SubprocessError, OSError) as e:
+            logger.warning(f"FFmpeg extraction failed: {e}")
             return False
 
     def _transcribe(self, audio_path: str) -> dict:
@@ -251,8 +252,8 @@ class SemanticChecker:
         finally:
             try:
                 os.unlink(tmp_path)
-            except:
-                pass
+            except OSError:
+                pass  # Ignore cleanup errors
 
     def check_segments(
         self,

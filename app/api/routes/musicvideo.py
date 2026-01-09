@@ -19,14 +19,24 @@ from pydantic import BaseModel
 from app.auth.dependencies import get_current_user_optional
 from app.auth.models import User
 
+from app.config import config
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/musicvideo", tags=["musicvideo"])
 
-# Directories
-MUSICVIDEO_DIR = Path(r"C:\dake\data\musicvideo")
+# Directories from config
+MUSICVIDEO_DIR = config.paths.data_dir / "musicvideo"
 UPLOAD_DIR = MUSICVIDEO_DIR / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+# Database path
+MUSICVIDEO_DB_PATH = config.paths.data_dir / "musicvideo.db"
+
+# File upload limits
+MAX_AUDIO_SIZE_MB = 50  # Maximum audio upload size in MB
+MAX_AUDIO_SIZE_BYTES = MAX_AUDIO_SIZE_MB * 1024 * 1024
+MAX_AUDIO_DURATION_SECONDS = 300  # 5 minutes max
 
 # In-memory job storage (will be replaced with DB)
 active_jobs = {}
@@ -67,7 +77,7 @@ async def generate_music_video(
     background_tasks: BackgroundTasks,
     audio: UploadFile = File(...),
     art_style: str = Form("photorealism"),
-    image_provider: str = Form("dalle"),
+    image_provider: str = Form("kie"),
     user: Optional[User] = Depends(get_current_user_optional)
 ):
     """
@@ -85,6 +95,14 @@ async def generate_music_video(
             detail=f"Unsupported audio format: {file_ext}. Allowed: {', '.join(allowed_types)}"
         )
 
+    # Validate file size
+    content = await audio.read()
+    if len(content) > MAX_AUDIO_SIZE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Audio file too large. Maximum size is {MAX_AUDIO_SIZE_MB}MB"
+        )
+
     # Generate job ID
     job_id = str(uuid.uuid4())
     user_id = user.user_id if user else None
@@ -93,9 +111,8 @@ async def generate_music_video(
     audio_path = UPLOAD_DIR / f"{job_id}{file_ext}"
     try:
         with open(audio_path, "wb") as f:
-            content = await audio.read()
             f.write(content)
-        logger.info(f"[MUSICVIDEO] Audio saved: {audio_path}")
+        logger.info(f"[MUSICVIDEO] Audio saved: {audio_path} ({len(content)} bytes)")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save audio: {e}")
 
@@ -140,7 +157,7 @@ def _save_job_to_db(job: MusicVideoJob):
     """Save job to SQLite database."""
     try:
         import sqlite3
-        db_path = Path(r"C:\dake\data\musicvideo.db")
+        db_path = MUSICVIDEO_DB_PATH
         conn = sqlite3.connect(str(db_path))
         cursor = conn.cursor()
 
@@ -178,15 +195,33 @@ def _save_job_to_db(job: MusicVideoJob):
 
 
 def _update_job_in_db(job_id: str, updates: dict):
-    """Update job in database."""
+    """Update job in database with validated column names."""
+    # Whitelist of allowed columns to prevent SQL injection
+    ALLOWED_COLUMNS = {
+        'status', 'progress', 'output_path', 'thumbnail', 'error',
+        'user_id', 'audio_name', 'art_style', 'image_provider'
+    }
+
+    # Filter updates to only allowed columns
+    safe_updates = {k: v for k, v in updates.items() if k in ALLOWED_COLUMNS}
+
+    if not safe_updates:
+        logger.warning(f"[MUSICVIDEO] No valid columns to update for job {job_id}")
+        return
+
+    # Log if any columns were filtered out
+    filtered = set(updates.keys()) - set(safe_updates.keys())
+    if filtered:
+        logger.warning(f"[MUSICVIDEO] Filtered out invalid columns: {filtered}")
+
     try:
         import sqlite3
-        db_path = Path(r"C:\dake\data\musicvideo.db")
+        db_path = MUSICVIDEO_DB_PATH
         conn = sqlite3.connect(str(db_path))
         cursor = conn.cursor()
 
-        set_clause = ", ".join([f"{k} = ?" for k in updates.keys()])
-        values = list(updates.values()) + [job_id]
+        set_clause = ", ".join([f"{k} = ?" for k in safe_updates.keys()])
+        values = list(safe_updates.values()) + [job_id]
 
         cursor.execute(f"UPDATE musicvideo_jobs SET {set_clause} WHERE job_id = ?", values)
         conn.commit()
@@ -199,7 +234,7 @@ def _get_jobs_from_db(user_id: Optional[str] = None, limit: int = 20) -> List[di
     """Get recent jobs from database."""
     try:
         import sqlite3
-        db_path = Path(r"C:\dake\data\musicvideo.db")
+        db_path = MUSICVIDEO_DB_PATH
         if not db_path.exists():
             return []
 
@@ -265,8 +300,8 @@ async def _run_generation(
             thumbnail = None
             try:
                 thumbnail = _generate_thumbnail(result.output_path, job_id)
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to generate thumbnail for {job_id}: {e}")
 
             updates = {
                 "status": "completed",
@@ -296,10 +331,7 @@ def _generate_thumbnail(video_path: str, job_id: str) -> Optional[str]:
     import subprocess
 
     thumbnail_path = MUSICVIDEO_DIR / f"{job_id}_thumb.jpg"
-    ffmpeg_path = r"C:\dake\tools\ffmpeg-master-latest-win64-gpl\bin\ffmpeg.exe"
-
-    if not os.path.exists(ffmpeg_path):
-        ffmpeg_path = "ffmpeg"
+    ffmpeg_path = config.paths.ffmpeg_path
 
     try:
         subprocess.run([
@@ -311,8 +343,8 @@ def _generate_thumbnail(video_path: str, job_id: str) -> Optional[str]:
 
         if thumbnail_path.exists():
             return f"/musicvideo_files/{job_id}_thumb.jpg"
-    except:
-        pass
+    except (subprocess.SubprocessError, OSError) as e:
+        logger.warning(f"Thumbnail generation failed: {e}")
 
     return None
 
@@ -434,7 +466,7 @@ async def delete_job(job_id: str):
     # Remove from database
     try:
         import sqlite3
-        db_path = Path(r"C:\dake\data\musicvideo.db")
+        db_path = MUSICVIDEO_DB_PATH
         if db_path.exists():
             conn = sqlite3.connect(str(db_path))
             cursor = conn.cursor()

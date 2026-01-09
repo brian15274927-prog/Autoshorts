@@ -3,7 +3,6 @@ TTS Service - Text-to-Speech using edge-tts.
 Fast and free TTS with professional voice quality.
 """
 import os
-import sys
 import asyncio
 import logging
 import tempfile
@@ -13,9 +12,7 @@ from dataclasses import dataclass
 import subprocess
 import json
 
-# CRITICAL: Fix Windows asyncio for subprocess support
-if sys.platform == 'win32':
-    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+from app.config import config
 
 logger = logging.getLogger(__name__)
 
@@ -166,7 +163,27 @@ class TTSService:
             # Generate SRT
             self._generate_srt(words, srt_path)
 
-            duration = self._get_audio_duration(output_path)
+            # Get duration from word timings (most accurate - comes from edge-tts)
+            if words:
+                duration_from_words = words[-1].end
+                logger.info(f"[TTS] Duration from word timings: {duration_from_words:.2f}s ({len(words)} words)")
+            else:
+                duration_from_words = 0.0
+
+            # Verify with ffprobe as sanity check
+            duration_from_ffprobe = self._get_audio_duration(output_path)
+            logger.info(f"[TTS] Duration from ffprobe: {duration_from_ffprobe:.2f}s")
+
+            # Use word timings duration if available (more reliable than ffprobe for streaming audio)
+            # ffprobe can give wrong results if called before file is fully flushed
+            if duration_from_words > 0:
+                duration = duration_from_words
+                if abs(duration_from_ffprobe - duration_from_words) > 1.0:
+                    logger.warning(f"[TTS] Duration mismatch! Words: {duration_from_words:.2f}s, ffprobe: {duration_from_ffprobe:.2f}s - using words")
+            else:
+                duration = duration_from_ffprobe
+
+            logger.info(f"[TTS] Final duration: {duration:.2f}s")
 
             return TTSResult(
                 audio_path=output_path,
@@ -239,18 +256,8 @@ class TTSService:
     def _get_audio_duration(self, audio_path: str) -> float:
         """Get audio duration using ffprobe."""
         try:
-            # Get ffprobe path from imageio-ffmpeg
-            try:
-                import imageio_ffmpeg
-                ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
-                ffprobe_path = ffmpeg_path.replace("ffmpeg-win-x86_64", "ffprobe-win-x86_64").replace("ffmpeg", "ffprobe")
-                if not os.path.exists(ffprobe_path):
-                    # Try same directory
-                    ffprobe_path = os.path.join(os.path.dirname(ffmpeg_path), "ffprobe.exe")
-                    if not os.path.exists(ffprobe_path):
-                        ffprobe_path = "ffprobe"
-            except ImportError:
-                ffprobe_path = "ffprobe"
+            # Get ffprobe path from config
+            ffprobe_path = config.paths.ffprobe_path
 
             cmd = [
                 ffprobe_path, "-v", "quiet",
@@ -271,7 +278,8 @@ class TTSService:
             file_size = os.path.getsize(audio_path)
             # Average bitrate ~128kbps = 16KB/s
             return file_size / 16000
-        except:
+        except OSError as e:
+            logger.warning(f"Could not estimate audio duration from file size: {e}")
             return 0.0
 
     async def generate_segments_audio(
@@ -379,16 +387,8 @@ class TTSService:
             for audio_file in audio_files:
                 f.write(f"file '{audio_file}'\n")
 
-        # Get FFmpeg path
-        ffmpeg_path = "ffmpeg"
-        local_paths = [
-            r"C:\dake\tools\ffmpeg-master-latest-win64-gpl\bin\ffmpeg.exe",
-            r"C:\ffmpeg\bin\ffmpeg.exe",
-        ]
-        for path in local_paths:
-            if os.path.exists(path):
-                ffmpeg_path = path
-                break
+        # Get FFmpeg path from config
+        ffmpeg_path = config.paths.ffmpeg_path
 
         cmd = [
             ffmpeg_path, "-y",

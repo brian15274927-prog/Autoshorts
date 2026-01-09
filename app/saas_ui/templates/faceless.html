@@ -183,31 +183,19 @@
                     <!-- Генератор изображений -->
                     <div>
                         <label class="block text-sm font-medium text-dark-300 mb-3">Генератор изображений</label>
-                        <div class="grid grid-cols-2 gap-3">
-                            <button type="button" class="provider-btn p-4 bg-dark-800/50 rounded-xl border-2 border-brand-500 bg-brand-500/10 text-left transition-all" data-provider="dalle" onclick="Faceless.setImageProvider('dalle')">
-                                <div class="flex items-center gap-3 mb-2">
-                                    <div class="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg flex items-center justify-center">
-                                        <span class="text-white text-sm font-bold">D3</span>
-                                    </div>
-                                    <div>
-                                        <span class="text-sm text-white font-medium block">DALL-E 3</span>
-                                        <span class="text-[10px] text-dark-500">OpenAI</span>
-                                    </div>
-                                </div>
-                                <p class="text-[10px] text-dark-400">~$0.04/изобр • Высокое качество</p>
-                            </button>
-                            <button type="button" class="provider-btn p-4 bg-dark-800/50 rounded-xl border-2 border-white/10 text-left transition-all hover:border-brand-400" data-provider="nanobanana" onclick="Faceless.setImageProvider('nanobanana')">
+                        <div class="grid grid-cols-1 gap-3">
+                            <div class="p-4 bg-dark-800/50 rounded-xl border-2 border-brand-500 bg-brand-500/10 text-left">
                                 <div class="flex items-center gap-3 mb-2">
                                     <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-                                        <span class="text-white text-sm font-bold">G</span>
+                                        <span class="text-white text-sm font-bold">K</span>
                                     </div>
                                     <div>
-                                        <span class="text-sm text-white font-medium block">Nano Banana</span>
-                                        <span class="text-[10px] text-dark-500">Google Gemini</span>
+                                        <span class="text-sm text-white font-medium block">Kie.ai (Nano Banana)</span>
+                                        <span class="text-[10px] text-dark-500">Gemini 2.5 Flash</span>
                                     </div>
                                 </div>
-                                <p class="text-[10px] text-dark-400">~$0.039/изобр • Быстрый</p>
-                            </button>
+                                <p class="text-[10px] text-dark-400">Быстрая генерация • Высокое качество</p>
+                            </div>
                         </div>
                     </div>
 
@@ -598,21 +586,13 @@ const Faceless = {
         format: '9:16',
         subtitleStyle: 'hormozi',
         artStyle: 'photorealism',
-        imageProvider: 'dalle',
+        imageProvider: 'kie',  // Only Kie.ai (Nano Banana) is supported
         ideaMode: 'expand'
     },
 
     setImageProvider(provider) {
-        this.settings.imageProvider = provider;
-        document.querySelectorAll('.provider-btn').forEach(btn => {
-            if (btn.dataset.provider === provider) {
-                btn.classList.add('border-brand-500', 'bg-brand-500/10');
-                btn.classList.remove('border-white/10');
-            } else {
-                btn.classList.remove('border-brand-500', 'bg-brand-500/10');
-                btn.classList.add('border-white/10');
-            }
-        });
+        // Only Kie.ai is supported - ignore parameter
+        this.settings.imageProvider = 'kie';
     },
 
     setIdeaMode(mode) {

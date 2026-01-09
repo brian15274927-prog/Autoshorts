@@ -63,38 +63,56 @@ class CreditService:
         Returns True if successful.
         Raises InsufficientCreditsError if not enough credits.
         Records in ledger when using SQLite backend.
+
+        Uses atomic operation to prevent race conditions.
         """
         if user.has_unlimited_credits:
             logger.info(f"User {user.user_id} has unlimited credits, no deduction")
             return True
 
-        if user.credits < cost:
-            logger.warning(
-                f"Insufficient credits for user {user.user_id}: "
-                f"required={cost}, available={user.credits}"
-            )
-            raise InsufficientCreditsError(
-                user_id=user.user_id,
-                required=cost,
-                available=user.credits,
-            )
-
         if self._use_ledger and self._ledger:
             from app.persistence import CreditReason
 
             reason_enum = CreditReason(reason) if reason in [r.value for r in CreditReason] else CreditReason.RENDER
-            self._ledger.record_debit(
+
+            # Use atomic_debit to prevent race conditions
+            entry = self._ledger.atomic_debit(
                 user_id=user.user_id,
                 amount=cost,
                 reason=reason_enum,
                 related_job_id=related_job_id,
             )
+
+            if entry is None:
+                # Atomic debit failed - insufficient credits
+                logger.warning(
+                    f"Insufficient credits for user {user.user_id}: "
+                    f"required={cost}, available={user.credits}"
+                )
+                raise InsufficientCreditsError(
+                    user_id=user.user_id,
+                    required=cost,
+                    available=user.credits,
+                )
+
             user.credits -= cost
             logger.info(
-                f"Deducted {cost} credit(s) from user {user.user_id} via ledger, "
+                f"Deducted {cost} credit(s) from user {user.user_id} via atomic ledger, "
                 f"remaining={user.credits}"
             )
         else:
+            # Non-ledger path: check then deduct (less safe but fallback)
+            if user.credits < cost:
+                logger.warning(
+                    f"Insufficient credits for user {user.user_id}: "
+                    f"required={cost}, available={user.credits}"
+                )
+                raise InsufficientCreditsError(
+                    user_id=user.user_id,
+                    required=cost,
+                    available=user.credits,
+                )
+
             success = user.deduct_credit(cost)
             if success:
                 self._repo.save(user)

@@ -1,6 +1,6 @@
 """
 YouTube Video Downloader using yt-dlp.
-Windows-compatible with absolute paths and SSL bypass.
+Windows-compatible with absolute paths.
 """
 import os
 import re
@@ -12,34 +12,18 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional, Dict, Any
 
+from app.config import config
+
 logger = logging.getLogger(__name__)
 
 # ============================================================
-# ABSOLUTE PATHS FOR WINDOWS COMPATIBILITY
+# PATHS FROM CONFIG (auto-detected)
 # ============================================================
 
-# FFmpeg paths - ABSOLUTE
-FFMPEG_PATH = r"C:\dake\tools\ffmpeg-master-latest-win64-gpl\bin\ffmpeg.exe"
-FFPROBE_PATH = r"C:\dake\tools\ffmpeg-master-latest-win64-gpl\bin\ffprobe.exe"
-FFMPEG_DIR = r"C:\dake\tools\ffmpeg-master-latest-win64-gpl\bin"
-
-# Fallback paths if primary doesn't exist
-if not os.path.exists(FFMPEG_PATH):
-    fallback_paths = [
-        r"C:\ffmpeg\bin\ffmpeg.exe",
-        r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
-    ]
-    for path in fallback_paths:
-        if os.path.exists(path):
-            FFMPEG_PATH = path
-            FFPROBE_PATH = path.replace("ffmpeg.exe", "ffprobe.exe")
-            FFMPEG_DIR = os.path.dirname(path)
-            break
-    else:
-        # System PATH fallback
-        FFMPEG_PATH = "ffmpeg"
-        FFPROBE_PATH = "ffprobe"
-        FFMPEG_DIR = None
+# FFmpeg paths from config (auto-detected)
+FFMPEG_PATH = config.paths.ffmpeg_path
+FFPROBE_PATH = config.paths.ffprobe_path
+FFMPEG_DIR = os.path.dirname(FFMPEG_PATH) if os.path.exists(FFMPEG_PATH) else None
 
 # Add FFmpeg to PATH for yt-dlp to find it
 if FFMPEG_DIR and os.path.exists(FFMPEG_DIR):
@@ -91,10 +75,14 @@ class YouTubeDownloader:
 
     Windows-compatible with:
     - Absolute FFmpeg paths
-    - SSL certificate bypass
+    - Configurable SSL verification
     - Synchronous subprocess calls
     - Proper error handling
     """
+
+    # SSL bypass can be enabled via environment variable for networks with SSL issues
+    # SECURITY WARNING: Only enable if you understand the risks (MITM attacks possible)
+    SKIP_SSL_VERIFY = os.getenv("YTDL_SKIP_SSL_VERIFY", "false").lower() == "true"
 
     def __init__(self, output_dir: Optional[str] = None):
         self.output_dir = Path(output_dir) if output_dir else Path(tempfile.gettempdir()) / "youtube_downloads"
@@ -102,6 +90,9 @@ class YouTubeDownloader:
         self.ffmpeg_path = FFMPEG_PATH
         self.ffprobe_path = FFPROBE_PATH
         self.ffmpeg_dir = FFMPEG_DIR
+
+        if self.SKIP_SSL_VERIFY:
+            logger.warning("SSL verification disabled for YouTube downloads - this is a security risk!")
 
     def _find_node_path(self) -> Optional[str]:
         """Find Node.js executable path."""
@@ -167,19 +158,22 @@ class YouTubeDownloader:
         audio_path = download_dir / "audio.mp3"
 
         # ============================================================
-        # YT-DLP OPTIONS WITH SSL BYPASS AND ABSOLUTE FFMPEG PATH
+        # YT-DLP OPTIONS WITH ABSOLUTE FFMPEG PATH
         # ============================================================
 
         base_opts = {
             'quiet': True,
             'no_warnings': True,
-            'nocheckcertificate': True,  # CRITICAL: Bypass SSL errors
-            'no_check_certificates': True,  # Alternative flag
             'ignoreerrors': False,
             'extract_flat': False,
             # Explicitly set Node.js path for JS-dependent extractors
             'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
         }
+
+        # SSL verification (disabled only if explicitly configured via YTDL_SKIP_SSL_VERIFY=true)
+        if self.SKIP_SSL_VERIFY:
+            base_opts['nocheckcertificate'] = True
+            base_opts['no_check_certificates'] = True
 
         # Set Node.js path for yt-dlp JavaScript runtime
         node_path = self._find_node_path()

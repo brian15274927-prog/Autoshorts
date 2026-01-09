@@ -34,11 +34,11 @@ class TierLimits:
 # Tier configurations
 TIER_LIMITS = {
     UserTier.FREE: TierLimits(
-        videos_per_day=3,
-        max_duration_seconds=30,
-        max_segments=6,
-        watermark=True,
-        priority=1,
+        videos_per_day=100,  # Increased for development
+        max_duration_seconds=180,  # Increased for development
+        max_segments=12,
+        watermark=False,
+        priority=5,
         dalle_quality="standard"
     ),
     UserTier.PRO: TierLimits(

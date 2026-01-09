@@ -2,17 +2,7 @@
 Ken Burns Service - Image Animation with Zoom/Pan Effects.
 Converts static DALL-E images into dynamic video clips.
 """
-import sys
 import asyncio
-
-# CRITICAL: Windows asyncio fix - MUST be at very top before any other asyncio usage
-if sys.platform == 'win32':
-    try:
-        from asyncio import WindowsProactorEventLoopPolicy
-        asyncio.set_event_loop_policy(WindowsProactorEventLoopPolicy())
-    except (ImportError, AttributeError):
-        pass
-
 import os
 import logging
 import random
@@ -22,6 +12,8 @@ from pathlib import Path
 from typing import List, Optional
 from dataclasses import dataclass
 from enum import Enum
+
+from app.config import config
 
 logger = logging.getLogger(__name__)
 
@@ -49,33 +41,8 @@ class AnimatedClip:
     height: int
 
 
-def get_ffmpeg_path() -> str:
-    """Get FFmpeg executable path - prioritize local installation."""
-    local_paths = [
-        r"C:\dake\tools\ffmpeg-master-latest-win64-gpl\bin\ffmpeg.exe",
-        r"C:\ffmpeg\bin\ffmpeg.exe",
-        r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
-    ]
-
-    for path in local_paths:
-        if os.path.exists(path):
-            logger.info(f"Found local FFmpeg: {path}")
-            return path
-
-    try:
-        import imageio_ffmpeg
-        ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
-        if os.path.exists(ffmpeg_path):
-            logger.info(f"Using imageio-ffmpeg: {ffmpeg_path}")
-            return ffmpeg_path
-    except ImportError:
-        pass
-
-    logger.warning("Using system FFmpeg from PATH")
-    return "ffmpeg"
-
-
-FFMPEG_PATH = get_ffmpeg_path()
+# FFmpeg path from config
+FFMPEG_PATH = config.paths.ffmpeg_path
 logger.info(f"Ken Burns Service initialized with FFmpeg: {FFMPEG_PATH}")
 
 
@@ -102,74 +69,67 @@ class KenBurnsService:
     ) -> str:
         """
         Generate FFmpeg zoompan filter for Ken Burns effect.
-        STABILIZED: Reduced zoom factors and strictly linear interpolation
-        to eliminate jitter and handheld camera shake.
+        ULTRA-STABILIZED: Using minimal zoom and smooth linear interpolation.
+        No per-frame floating point multiplication to prevent jitter.
         """
         total_frames = int(duration * self.fps)
 
-        # ANTI-SHAKE: Ultra-minimal zoom for smooth "floating" effect
-        # Zoom speed: 0.0005-0.001 per frame (almost imperceptible)
-        # Video should "float" smoothly, NOT shake or jitter
-        zoom_increment = 0.0008  # 0.08% zoom per frame = ultra-smooth
-        pan_distance = 0.04  # Reduced from 0.08 to 0.04 for minimal drift
+        # ANTI-SHAKE: Use static or very simple zoom expressions
+        # Avoid complex per-frame calculations that can cause micro-jitter
+        # Use integer-friendly math where possible
 
         if effect == KenBurnsEffect.ZOOM_IN:
-            # Gentle zoom in - strictly linear, centered
-            zoom_expr = f"1+on*{zoom_increment}"
+            # Very gentle zoom in: 1.0 -> 1.05 over duration
+            # Using simple linear interpolation
+            zoom_expr = f"min(1.05,1+on/{total_frames}*0.05)"
             x_expr = "iw/2-(iw/zoom/2)"
             y_expr = "ih/2-(ih/zoom/2)"
 
         elif effect == KenBurnsEffect.ZOOM_OUT:
-            # Gentle zoom out - start at 1.12, end at 1.0
-            zoom_expr = f"1.12-on*{zoom_increment}"
+            # Very gentle zoom out: 1.05 -> 1.0 over duration
+            zoom_expr = f"max(1,1.05-on/{total_frames}*0.05)"
             x_expr = "iw/2-(iw/zoom/2)"
             y_expr = "ih/2-(ih/zoom/2)"
 
         elif effect == KenBurnsEffect.PAN_LEFT:
-            # Subtle pan left with slight zoom for depth
-            zoom_expr = "1.08"
-            pan_per_frame = pan_distance / total_frames
-            x_expr = f"iw*{pan_distance}-on*{pan_per_frame}*iw"
+            # Static zoom, gentle pan left
+            zoom_expr = "1.05"
+            x_expr = f"iw*0.025-on/{total_frames}*iw*0.025"
             y_expr = "ih/2-(ih/zoom/2)"
 
         elif effect == KenBurnsEffect.PAN_RIGHT:
-            # Subtle pan right with slight zoom for depth
-            zoom_expr = "1.08"
-            pan_per_frame = pan_distance / total_frames
-            x_expr = f"on*{pan_per_frame}*iw"
+            # Static zoom, gentle pan right
+            zoom_expr = "1.05"
+            x_expr = f"on/{total_frames}*iw*0.025"
             y_expr = "ih/2-(ih/zoom/2)"
 
         elif effect == KenBurnsEffect.PAN_UP:
-            # Subtle pan up - good for vertical video
-            zoom_expr = "1.08"
-            pan_per_frame = pan_distance / total_frames
+            # Static zoom, gentle pan up
+            zoom_expr = "1.05"
             x_expr = "iw/2-(iw/zoom/2)"
-            y_expr = f"ih*{pan_distance}-on*{pan_per_frame}*ih"
+            y_expr = f"ih*0.025-on/{total_frames}*ih*0.025"
 
         elif effect == KenBurnsEffect.PAN_DOWN:
-            # Subtle pan down - good for vertical video
-            zoom_expr = "1.08"
-            pan_per_frame = pan_distance / total_frames
+            # Static zoom, gentle pan down
+            zoom_expr = "1.05"
             x_expr = "iw/2-(iw/zoom/2)"
-            y_expr = f"on*{pan_per_frame}*ih"
+            y_expr = f"on/{total_frames}*ih*0.025"
 
         elif effect == KenBurnsEffect.ZOOM_IN_PAN_RIGHT:
-            # Combined effect - very subtle for stability
-            zoom_expr = f"1+on*{zoom_increment * 0.8}"
-            pan_per_frame = (pan_distance * 0.6) / total_frames
-            x_expr = f"on*{pan_per_frame}*iw"
+            # Combined: gentle zoom in + pan right
+            zoom_expr = f"min(1.04,1+on/{total_frames}*0.04)"
+            x_expr = f"on/{total_frames}*iw*0.02"
             y_expr = "ih/2-(ih/zoom/2)"
 
         elif effect == KenBurnsEffect.ZOOM_OUT_PAN_LEFT:
-            # Combined effect - very subtle for stability
-            zoom_expr = f"1.10-on*{zoom_increment * 0.8}"
-            pan_per_frame = (pan_distance * 0.6) / total_frames
-            x_expr = f"iw*{pan_distance*0.6}-on*{pan_per_frame}*iw"
+            # Combined: gentle zoom out + pan left
+            zoom_expr = f"max(1,1.04-on/{total_frames}*0.04)"
+            x_expr = f"iw*0.02-on/{total_frames}*iw*0.02"
             y_expr = "ih/2-(ih/zoom/2)"
 
         else:
             # Default: gentle zoom in
-            zoom_expr = f"1+on*{zoom_increment}"
+            zoom_expr = f"min(1.05,1+on/{total_frames}*0.05)"
             x_expr = "iw/2-(iw/zoom/2)"
             y_expr = "ih/2-(ih/zoom/2)"
 
@@ -402,8 +362,8 @@ class KenBurnsService:
             try:
                 if os.path.exists(list_path):
                     os.remove(list_path)
-            except:
-                pass
+            except OSError as e:
+                logger.warning(f"Failed to remove temp list file: {e}")
 
         return output_path
 
@@ -493,11 +453,7 @@ class KenBurnsService:
     async def concatenate_clips(
         self,
         clips: List[AnimatedClip],
-        output_path: str,
-        crossfade_duration: float = 0.3
+        output_path: str
     ) -> str:
-        """
-        Concatenate animated clips into a single video.
-        """
-        # Use synchronous method
+        """Concatenate animated clips into a single video."""
         return self._concatenate_clips_sync(clips, output_path)
