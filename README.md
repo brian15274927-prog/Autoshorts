@@ -1,105 +1,179 @@
-# Video Rendering API
+# Autoshorts - AI Video Generation Platform
 
-SaaS API for AI-powered vertical video generation.
+SaaS платформа для автоматической генерации вертикальных видео (Shorts/Reels/TikTok) с использованием AI.
 
-## Quick Start
+## Возможности
 
-### 1. Install Dependencies
+- **Faceless Video Generation** - Создание видео без лица с AI-озвучкой и изображениями
+- **Kie.ai Integration** - Генерация изображений через Nano Banana модель
+- **Edge-TTS** - Профессиональная озвучка на русском и английском
+- **Ken Burns Effect** - Плавная анимация изображений (zoom in/out)
+- **Auto Subtitles** - Автоматические субтитры в стиле Hormozi
+- **Script Editor** - Редактирование сценария с превью
+
+## Быстрый старт
+
+### 1. Установка зависимостей
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Configure Environment
-
-Copy `.env.example` to `.env` and configure:
+### 2. Настройка окружения
 
 ```bash
 cp .env.example .env
 ```
 
-Key settings:
-- `ADMIN_SECRET` - Secret for admin authentication
-- `DATABASE_PATH` - SQLite database path (default: `data/app.db`)
-- `DEV_BROWSER_MODE` - Set to `true` for browser testing without headers
+Ключевые настройки в `.env`:
+```env
+# API Keys
+OPENAI_API_KEY=sk-...          # Для генерации сценариев (GPT-4)
+KIE_API_KEY=...                # Для генерации изображений (Kie.ai)
 
-### 3. Start the Server
+# Auth
+ADMIN_SECRET=your-secret-key   # Минимум 32 символа для продакшена
 
-```bash
-# Windows - kill any existing uvicorn processes first:
-taskkill /F /IM uvicorn.exe 2>nul
-
-# Start the server
-uvicorn app.api.main:app --reload --port 8888
+# Dev Mode
+DEV_BROWSER_MODE=true          # Упрощённая авторизация для разработки
 ```
 
-### 4. Access the Application
+### 3. Запуск сервера
 
-- **Home**: http://localhost:8888/
-- **API Docs**: http://localhost:8888/docs
-- **Admin UI**: http://localhost:8888/admin-ui
+```bash
+# Разработка с auto-reload
+uvicorn app.api.main:app --reload --port 8000
 
-## Admin Web UI
+# Продакшен
+uvicorn app.api.main:app --host 0.0.0.0 --port 8000
+```
 
-The Admin UI provides a web-based interface for managing users, credits, and jobs.
+### 4. Доступ к приложению
 
-### Access
+- **Faceless Generator**: http://localhost:8000/app/faceless
+- **API Docs**: http://localhost:8000/docs
+- **Admin UI**: http://localhost:8000/admin-ui
 
-1. Navigate to http://localhost:8080/admin-ui
-2. Enter the `ADMIN_SECRET` from your `.env` file
-3. You'll be redirected to the dashboard
+## Faceless Video Generation
 
-### Features
+### Процесс создания видео
 
-- **Dashboard**: System overview with stats and recent activity
-- **Users**: List, search, and manage users
-- **User Detail**: View/edit user plan, adjust credits, view ledger and jobs
-- **Idempotency**: View all idempotency keys with filters
+1. **Выбор темы** - Введите тему или идею для видео
+2. **Генерация сценария** - GPT-4 создаёт сценарий с visual prompts
+3. **Редактирование** - Редактируйте текст и промпты для изображений
+4. **Генерация видео** - Параллельная генерация аудио + изображений
+5. **Ken Burns анимация** - Плавные переходы между кадрами
+6. **Финальный рендер** - Объединение видео, аудио и субтитров
 
-### Default Admin Secret
+### API Endpoints
 
-If `ADMIN_SECRET` is not set, the default is: `admin-secret-default`
+```bash
+# Превью сценария
+POST /api/faceless/preview-script
+{
+  "topic": "Интересные факты о космосе",
+  "duration": 30,
+  "style": "viral"
+}
 
-**Important**: Always set a secure `ADMIN_SECRET` in production!
+# Генерация видео
+POST /api/faceless/generate-from-script
+{
+  "topic": "...",
+  "duration": 30,
+  "edited_segments": [...]
+}
 
-## API Endpoints
+# Статус задачи
+GET /api/faceless/status/{job_id}
 
-### Authentication
+# Скачать видео
+GET /api/faceless/download/{job_id}
+```
 
-All API endpoints require the `X-User-Id` header (except health checks).
-
-In `DEV_BROWSER_MODE=true`, requests without headers are auto-assigned to `browser-dev-user`.
-
-### Render Jobs
-
-- `POST /render` - Create render job (requires `Idempotency-Key` header)
-- `GET /render` - List your render jobs
-- `GET /render/{task_id}` - Get job status
-- `POST /render/{task_id}/cancel` - Cancel a job
-- `GET /render/me/credits` - Get your credits
-
-### Admin API
-
-- `GET /admin/users` - List users (requires `X-Admin-Secret`)
-- `POST /admin/users/{user_id}/credits` - Adjust credits
-
-## Architecture
-
-- **FastAPI** - Web framework
-- **SQLite** - Persistence (users, credits, jobs, idempotency)
-- **Celery + Redis** - Task queue for video rendering
-- **MoviePy + FFmpeg** - Video processing
-
-## Project Structure
+## Архитектура
 
 ```
 app/
-├── api/           # FastAPI routes and schemas
-├── admin_ui/      # Admin web interface
-│   ├── templates/ # Jinja2 templates
-│   └── static/    # CSS
-├── auth/          # Authentication middleware
-├── credits/       # Credit service and job tracker
-├── persistence/   # SQLite repositories
-└── rendering/     # Video rendering engine
+├── api/                    # FastAPI routes
+│   ├── routes/
+│   │   ├── faceless.py    # Faceless video endpoints
+│   │   ├── god_mode.py    # Advanced editing
+│   │   └── musicvideo.py  # Music video generation
+│   └── main.py
+├── services/
+│   ├── faceless_engine.py     # Core video pipeline
+│   ├── fast_script_generator.py # GPT script generation
+│   ├── kie_service.py         # Kie.ai image generation
+│   ├── tts_service.py         # Edge-TTS voice synthesis
+│   ├── ken_burns_service.py   # Image animation
+│   └── dalle_service.py       # DALL-E fallback
+├── saas_ui/
+│   └── templates/
+│       └── faceless_mvp.html  # Main UI
+├── persistence/               # SQLite repositories
+├── credits/                   # Credit system
+└── auth/                      # Authentication
 ```
+
+## Стек технологий
+
+- **Backend**: FastAPI, Python 3.11+
+- **Database**: SQLite (async via aiosqlite)
+- **Video Processing**: FFmpeg, MoviePy
+- **AI Services**:
+  - OpenAI GPT-4 (сценарии)
+  - Kie.ai Nano Banana (изображения)
+  - Edge-TTS (озвучка)
+- **Frontend**: Vanilla JS, TailwindCSS
+
+## Конфигурация
+
+### Форматы видео
+
+| Формат | Разрешение | Использование |
+|--------|-----------|---------------|
+| vertical | 1080x1920 | Shorts, Reels, TikTok |
+| horizontal | 1920x1080 | YouTube |
+| square | 1080x1080 | Instagram |
+
+### Стили сценариев
+
+- `viral` - Быстрый темп, хуки, клиффхэнгеры
+- `educational` - Объяснительный стиль
+- `storytelling` - Нарративный подход
+- `documentary` - Документальный стиль
+- `motivational` - Мотивационный контент
+
+### Художественные стили изображений
+
+- `photorealistic` - Фотореализм
+- `cinematic` - Кинематографичный
+- `anime` - Аниме стиль
+- `digital_art` - Цифровое искусство
+- `oil_painting` - Масляная живопись
+
+## Тестирование
+
+```bash
+# Запуск тестов
+pytest tests/ -v
+
+# С coverage
+pytest tests/ --cov=app --cov-report=html
+```
+
+## Переменные окружения
+
+| Переменная | Описание | По умолчанию |
+|-----------|----------|--------------|
+| `OPENAI_API_KEY` | OpenAI API ключ | - |
+| `KIE_API_KEY` | Kie.ai API ключ | - |
+| `ADMIN_SECRET` | Секрет админа | `admin-secret-default` |
+| `DATABASE_PATH` | Путь к SQLite | `data/app.db` |
+| `DEV_BROWSER_MODE` | Dev режим | `false` |
+| `DATA_DIR` | Директория данных | `./data` |
+
+## Лицензия
+
+MIT
